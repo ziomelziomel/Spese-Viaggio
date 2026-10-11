@@ -36,10 +36,72 @@ if "spese" not in st.session_state:
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = []
 
-# Logout nella sidebar
+# Variabili di stato per la pulizia dei campi di input
+if "input_nuovo_partecipante" not in st.session_state:
+    st.session_state["input_nuovo_partecipante"] = ""
+
+if "input_importo_versamento" not in st.session_state:
+    st.session_state["input_importo_versamento"] = 0.0
+
+# --- MENU LATERALE (BARRA SINISTRA) ---
+st.sidebar.header("⚙️ Configurazione & Cassa")
+
+# 1. Gestione Partecipanti
+st.sidebar.subheader("👥 Partecipanti")
+nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante", key="input_nuovo_partecipante")
+
+if st.sidebar.button("Aggiungi"):
+    valore = st.session_state["input_nuovo_partecipante"].strip()
+    if valore and valore not in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].append(valore)
+        st.session_state["versamenti"][valore] = 0.0
+        st.session_state["input_nuovo_partecipante"] = ""  # Pulisce il campo
+        st.sidebar.success(f"Aggiunto {valore}!")
+        st.rerun()
+    elif valore in st.session_state["partecipanti"]:
+        st.sidebar.warning("Il partecipante esiste già.")
+
+partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
+if st.sidebar.button("Rimuovi"):
+    if partecipante_da_rimuovere in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
+        if partecipante_da_rimuovere in st.session_state["versamenti"]:
+            del st.session_state["versamenti"][partecipante_da_rimuovere]
+        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+        st.rerun()
+
+st.sidebar.divider()
+
+# 2. Gestione Versamenti in Cassa
+st.sidebar.subheader("💰 Versamenti Cassa")
+persona_versamento = st.sidebar.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""], key="sel_vers")
+importo_versamento = st.sidebar.number_input("Importo versato (€)", min_value=0.0, format="%.2f", key="input_importo_versamento")
+tipo_versamento = st.sidebar.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
+
+if st.sidebar.button("Registra Versamento"):
+    importo_attuale = st.session_state["input_importo_versamento"]
+    if persona_versamento and importo_attuale > 0:
+        st.session_state["versamenti"][persona_versamento] += importo_attuale
+        st.session_state["extra_versamenti"].append({
+            "Partecipante": persona_versamento,
+            "Importo": importo_attuale,
+            "Tipo": tipo_versamento
+        })
+        st.sidebar.success(f"Registrati {importo_attuale}€ per {persona_versamento}!")
+        st.session_state["input_importo_versamento"] = 0.0  # Pulisce l'importo
+        st.rerun()
+    else:
+        st.sidebar.warning("Seleziona un partecipante e un importo valido.")
+
+st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
+
+# --- CONTROLLI PRELIMINARI ---
+if not st.session_state["partecipanti"]:
+    st.warning("⚠️ Non ci sono partecipanti configurati. Aggiungi almeno un partecipante dalla barra laterale.")
+    st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
 totale_versato = sum(st.session_state["versamenti"].values())
@@ -53,111 +115,52 @@ col_m2.metric("Spese Totali", f"{totale_speso:.2f} €")
 col_m3.metric("Disponibilità Cassa", f"{cassa_rimanente:.2f} €", delta=f"{cassa_rimanente:.2f} €")
 
 if cassa_rimanente < 0:
-    st.error("⚠️ **ATTENZIONE: La cassa comune è in rosso!** Effettua un incremento di cassa qui sotto.")
+    st.error("⚠️ **ATTENZIONE: La cassa comune è in rosso!** Effettua un incremento di cassa dalla barra laterale.")
 
 st.divider()
 
-# --- SEZIONE GESTIONE PARTECIPANTI E VERSAMENTI (CENTRALE E PULITA) ---
-tab_spese, tab_cassa, tab_partecipanti = st.tabs(["📝 Registra Spesa", "💰 Gestione Cassa", "👥 Partecipanti"])
+# --- SEZIONE CENTRALE: REGISTRA SPESA ---
+st.subheader("📝 Registra Spesa")
 
-with tab_partecipanti:
-    st.subheader("Gestione Partecipanti")
+with st.form("form_spesa", clear_on_submit=True):
+    descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
+    importo = st.number_input("Importo (€)", min_value=0.0, format="%.2f")
     
-    # Form aggiunta (si pulisce da solo)
-    with st.form("form_agg_part", clear_on_submit=True):
-        nuovo_nome = st.text_input("Nome nuovo partecipante")
-        btn_agg = st.form_submit_button("Aggiungi Partecipante")
-        if btn_agg:
-            nome_pulito = nuovo_nome.strip()
-            if nome_pulito and nome_pulito not in st.session_state["partecipanti"]:
-                st.session_state["partecipanti"].append(nome_pulito)
-                st.session_state["versamenti"][nome_pulito] = 0.0
-                st.success(f"Partecipante {nome_pulito} aggiunto con successo!")
-                st.rerun()
-            elif nome_pulito in st.session_state["partecipanti"]:
-                st.warning("Il partecipante esiste già.")
-
-    st.write("---")
-    st.write("**Partecipanti attivi:**")
-    st.write(", ".join(st.session_state["partecipanti"]))
+    modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
     
-    # Form rimozione
-    with st.form("form_rem_part", clear_on_submit=True):
-        da_rimuovere = st.selectbox("Seleziona partecipante da rimuovere", [""] + st.session_state["partecipanti"])
-        btn_rem = st.form_submit_button("Rimuovi Selezionato")
-        if btn_rem:
-            if da_rimuovere in st.session_state["partecipanti"]:
-                st.session_state["partecipanti"].remove(da_rimuovere)
-                if da_rimuovere in st.session_state["versamenti"]:
-                    del st.session_state["versamenti"][da_rimuovere]
-                st.success(f"Rimosso {da_rimuovere}!")
-                st.rerun()
-
-with tab_cassa:
-    st.subheader("Versamenti e Incrementi Cassa")
+    pagato_da = "Cassa Comune"
+    if modalita_pagamento == "Anticipato da un partecipante":
+        pagato_da = st.selectbox("Chi ha anticipato i soldi?", st.session_state["partecipanti"])
     
-    with st.form("form_versamento", clear_on_submit=True):
-        p_vers = st.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""])
-        imp_vers = st.number_input("Importo versato (€)", min_value=0.0, format="%.2f")
-        tipo_v = st.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
-        
-        btn_reg_vers = st.form_submit_button("Registra Versamento")
-        if btn_reg_vers:
-            if p_vers and imp_vers > 0:
-                st.session_state["versamenti"][p_vers] += imp_vers
-                st.session_state["extra_versamenti"].append({
-                    "Partecipante": p_vers,
-                    "Importo": imp_vers,
-                    "Tipo": tipo_v
-                })
-                st.success(f"Registrati {imp_vers}€ per {p_vers}!")
-                st.rerun()
-            else:
-                st.warning("Inserisci un importo valido.")
+    st.write("Seleziona chi partecipa a questa spesa:")
+    partecipanti_coinvolti = {}
+    cols = st.columns(min(len(st.session_state["partecipanti"]), 4))
+    for i, p in enumerate(st.session_state["partecipanti"]):
+        with cols[i % len(cols)]:
+            partecipanti_coinvolti[p] = st.checkbox(p, value=True, key=f"cb_{p}")
+            
+    submitted = st.form_submit_button("Registra Spesa")
+    
+    if submitted:
+        coinvolti_list = [p for p, attivo in partecipanti_coinvolti.items() if attivo]
+        if not descrizione:
+            st.warning("Inserisci una descrizione per la spesa.")
+        elif importo <= 0:
+            st.warning("L'importo deve essere maggiore di zero.")
+        elif not coinvolti_list:
+            st.warning("Seleziona almeno un partecipante per questa spesa.")
+        else:
+            st.session_state["spese"].append({
+                "Descrizione": descrizione,
+                "Importo": importo,
+                "Pagato da": pagato_da,
+                "Coinvolti": ", ".join(coinvolti_list),
+                "Num_Coinvolti": len(coinvolti_list)
+            })
+            st.success(f"Spesa '{descrizione}' registrata con successo!")
+            st.rerun()
 
-with tab_spese:
-    if not st.session_state["partecipanti"]:
-        st.warning("⚠️ Configura prima almeno un partecipante nella scheda 'Partecipanti'.")
-    else:
-        with st.form("form_spesa", clear_on_submit=True):
-            descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
-            importo = st.number_input("Importo (€)", min_value=0.0, format="%.2f")
-            
-            modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
-            
-            pagato_da = "Cassa Comune"
-            if modalita_pagamento == "Anticipato da un partecipante":
-                pagato_da = st.selectbox("Chi ha anticipato i soldi?", st.session_state["partecipanti"])
-            
-            st.write("Seleziona chi partecipa a questa spesa:")
-            partecipanti_coinvolti = {}
-            cols = st.columns(min(len(st.session_state["partecipanti"]), 4))
-            for i, p in enumerate(st.session_state["partecipanti"]):
-                with cols[i % len(cols)]:
-                    partecipanti_coinvolti[p] = st.checkbox(p, value=True, key=f"cb_{p}")
-                    
-            submitted = st.form_submit_button("Registra Spesa")
-            
-            if submitted:
-                coinvolti_list = [p for p, attivo in partecipanti_coinvolti.items() if attivo]
-                if not descrizione:
-                    st.warning("Inserisci una descrizione per la spesa.")
-                elif importo <= 0:
-                    st.warning("L'importo deve essere maggiore di zero.")
-                elif not coinvolti_list:
-                    st.warning("Seleziona almeno un partecipante per questa spesa.")
-                else:
-                    st.session_state["spese"].append({
-                        "Descrizione": descrizione,
-                        "Importo": importo,
-                        "Pagato da": pagato_da,
-                        "Coinvolti": ", ".join(coinvolti_list),
-                        "Num_Coinvolti": len(coinvolti_list)
-                    })
-                    st.success(f"Spesa '{descrizione}' registrata con successo!")
-                    st.rerun()
-
-# --- SEZIONE 2: STORICO SPESE E BILANCI ---
+# --- SEZIONE: STORICO SPESE E BILANCI ---
 st.divider()
 st.subheader("📊 Riepilogo Movimenti e Saldi Individuali")
 
