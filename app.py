@@ -36,62 +36,59 @@ if "spese" not in st.session_state:
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = []
 
-if "nuovo_partecipante_input" not in st.session_state:
-    st.session_state["nuovo_partecipante_input"] = ""
-
-# Contatore per forzare il reset del campo importo versamento
-if "reset_counter" not in st.session_state:
-    st.session_state["reset_counter"] = 0
-
-# --- MENU LATERALE: GESTIONE PARTECIPANTI E VERSAMENTI ---
+# --- MENU LATERALE: CONFIGURAZIONE & CASSA ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
-# Gestione partecipanti (Aggiunta e Rimozione)
-st.sidebar.subheader("👥 Partecipanti")
-nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante", key="nuovo_partecipante_input")
-if st.sidebar.button("Aggiungi"):
-    valore = st.session_state["nuovo_partecipante_input"].strip()
-    if valore and valore not in st.session_state["partecipanti"]:
-        st.session_state["partecipanti"].append(valore)
-        st.session_state["versamenti"][valore] = 0.0
-        st.session_state["nuovo_partecipante_input"] = ""  # Pulisce il campo testo
-        st.sidebar.success(f"Aggiunto {valore}!")
-        st.rerun()
-    elif valore in st.session_state["partecipanti"]:
-        st.sidebar.warning("Partecipante già esistente.")
+# 1. Form per Aggiungere Partecipante (si azzera automaticamente all'invio)
+with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
+    st.subheader("👥 Aggiungi Partecipante")
+    nuovo_partecipante = st.text_input("Nome nuovo partecipante")
+    btn_aggiungi = st.form_submit_button("Aggiungi")
+    
+    if btn_aggiungi:
+        valore = nuovo_partecipante.strip()
+        if valore and valore not in st.session_state["partecipanti"]:
+            st.session_state["partecipanti"].append(valore)
+            st.session_state["versamenti"][valore] = 0.0
+            st.success(f"Aggiunto {valore}!")
+            st.rerun()
+        elif valore in st.session_state["partecipanti"]:
+            st.warning("Partecipante già esistente.")
 
-# Selezione partecipante da rimuovere
-partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
+# 2. Rimozione partecipante fuori dai form (tramite selectbox)
+st.sidebar.subheader("🗑️ Rimuovi Partecipante")
+partecipante_da_rimuovere = st.sidebar.selectbox("Seleziona da rimuovere", [""] + st.session_state["partecipanti"], key="sel_rimuovi")
 if st.sidebar.button("Rimuovi"):
     if partecipante_da_rimuovere in st.session_state["partecipanti"]:
         st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
         if partecipante_da_rimuovere in st.session_state["versamenti"]:
             del st.session_state["versamenti"][partecipante_da_rimuovere]
-        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+        st.success(f"Rimosso {partecipante_da_rimuovere}!")
         st.rerun()
 
 st.sidebar.divider()
-st.sidebar.write("### 💰 Gestione Versamenti / Cassa")
-persona_versamento = st.sidebar.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""], key="sel_vers")
 
-# Utilizziamo il contatore nel key per forzare il reset visivo dell'input numerico
-importo_versamento = st.sidebar.number_input("Importo versato (€)", min_value=0.0, format="%.2f", key=f"importo_vers_{st.session_state['reset_counter']}")
-tipo_versamento = st.sidebar.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
-
-if st.sidebar.button("Registra Versamento"):
-    if persona_versamento and importo_versamento > 0:
-        st.session_state["versamenti"][persona_versamento] += importo_versamento
-        st.session_state["extra_versamenti"].append({
-            "Partecipante": persona_versamento,
-            "Importo": importo_versamento,
-            "Tipo": tipo_versamento
-        })
-        st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
-        # Incrementiamo il contatore per ricreare il widget pulito a 0.0
-        st.session_state["reset_counter"] += 1
-        st.rerun()
-    else:
-        st.sidebar.warning("Seleziona un partecipante e un importo valido.")
+# 3. Form per la Gestione Versamenti / Cassa (si azzera automaticamente all'invio)
+with st.sidebar.form("form_versamento", clear_on_submit=True):
+    st.write("### 💰 Gestione Versamenti")
+    persona_versamento = st.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""])
+    importo_versamento = st.number_input("Importo versato (€)", min_value=0.0, format="%.2f")
+    tipo_versamento = st.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
+    
+    btn_registra_versamento = st.form_submit_button("Registra Versamento")
+    
+    if btn_registra_versamento:
+        if persona_versamento and importo_versamento > 0:
+            st.session_state["versamenti"][persona_versamento] += importo_versamento
+            st.session_state["extra_versamenti"].append({
+                "Partecipante": persona_versamento,
+                "Importo": importo_versamento,
+                "Tipo": tipo_versamento
+            })
+            st.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
+            st.rerun()
+        else:
+            st.warning("Seleziona un partecipante e un importo valido.")
 
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
@@ -217,5 +214,4 @@ with col_r2:
         st.session_state["spese"] = []
         st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
         st.session_state["extra_versamenti"] = []
-        st.session_state["reset_counter"] = 0
         st.rerun()
