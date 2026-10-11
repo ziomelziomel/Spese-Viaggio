@@ -89,7 +89,7 @@ if not st.session_state["partecipanti"]:
 
 # --- CALCOLI FINANZIARI GENERALI ---
 totale_versato = sum(st.session_state["versamenti"].values())
-totale_speso = sum(s["Importo"] for s in st.session_state["spese"])
+totale_speso = sum(s.get("Importo", 0.0) for s in st.session_state["spese"])
 cassa_rimanente = totale_versato - totale_speso
 
 # Mostra metriche principali della cassa
@@ -110,7 +110,6 @@ with st.form("form_spesa", clear_on_submit=True):
     descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
     importo = st.number_input("Importo (€)", min_value=0.0, format="%.2f")
     
-    # Scelta chi paga: Cassa comune oppure anticipo di un singolo partecipante
     modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
     
     pagato_da = "Cassa Comune"
@@ -154,36 +153,36 @@ if len(st.session_state["spese"]) > 0:
     df_spese = pd.DataFrame(st.session_state["spese"])
     st.dataframe(df_spese, use_container_width=True)
 
-# Calcolo dei saldi individuali
-# Se la spesa è pagata dalla cassa: pesa solo come quota a carico del partecipante.
-# Se la spesa è anticipata da un partecipante: chi ha anticipato riceve un credito pari all'importo, e ciascuno paga la sua quota.
+# Calcolo dei saldi individuali in modo sicuro
 quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
 crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
 
 for spesa in st.session_state["spese"]:
-    totale = spesa["Importo"]
-    pagatore = spesa["Pagato da"]
-    n_coinvolti = spesa["Num_Coinvolti"]
-    quota_capite = totale / n_coinvolti
+    totale = spesa.get("Importo", 0.0)
+    pagatore = spesa.get("Pagato da", spesa.get("Gestito da", "Cassa Comune"))
+    n_coinvolti = spesa.get("Num_Coinvolti", 1)
     
     if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
         crediti_anticipi[pagatore] += totale
         
-    lista_coinvolti = spesa["Coinvolti"].split(", ")
+    coinvolti_str = spesa.get("Coinvolti", "")
+    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_str else []
+    
+    if n_coinvolti == 0:
+        n_coinvolti = max(len(lista_coinvolti), 1)
+        
+    quota_capite = totale / n_coinvolti
     for p in lista_coinvolti:
         if p in quote_spese:
             quote_spese[p] += quota_capite
 
 st.write("### 💶 Situazione Contabile per Persona:")
-st.info("• **Versato in cassa:** Soldi immessi nel fondo comune.\n• **Spesa a carico:** Totale delle quote dei vari acquisti.\n• **Anticipi extra:** Soldi spesi di tasca propria (se applicabile).\n• **Saldo:** Positivo (+) = credito/rimanenza | Negativo (-) = deve integrare o versare.")
-
 col_res1, col_res2 = st.columns(2)
 for i, p in enumerate(st.session_state["partecipanti"]):
     versato_p = st.session_state["versamenti"].get(p, 0.0)
     speso_p = quote_spese.get(p, 0.0)
     anticipato_p = crediti_anticipi.get(p, 0.0)
     
-    # Saldo = Versato in cassa + Anticipi fatti di tasca propria - Spese a suo carico
     saldo_p = (versato_p + anticipato_p) - speso_p
     
     col = col_res1 if i % 2 == 0 else col_res2
@@ -193,8 +192,14 @@ for i, p in enumerate(st.session_state["partecipanti"]):
         st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
         st.markdown("---")
 
-if st.button("🗑️ Reset totale dati (Azzera tutto)"):
-    st.session_state["spese"] = []
-    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
-    st.session_state["extra_versamenti"] = []
-    st.rerun()
+col_r1, col_r2 = st.columns(2)
+with col_r1:
+    if st.button("🔄 Pulisci memoria spese"):
+        st.session_state["spese"] = []
+        st.rerun()
+with col_r2:
+    if st.button("🗑️ Reset totale dati (Azzera tutto)"):
+        st.session_state["spese"] = []
+        st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+        st.session_state["extra_versamenti"] = []
+        st.rerun()
