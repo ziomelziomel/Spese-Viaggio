@@ -36,18 +36,29 @@ if "spese" not in st.session_state:
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = []
 
+# Inizializzazione chiavi per pulire i campi input
+if "nuovo_partecipante_input" not in st.session_state:
+    st.session_state["nuovo_partecipante_input"] = ""
+
+if "imp_vers" not in st.session_state:
+    st.session_state["imp_vers"] = 0.0
+
 # --- MENU LATERALE: GESTIONE PARTECIPANTI E VERSAMENTI ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
 # Gestione partecipanti (Aggiunta e Rimozione)
 st.sidebar.subheader("👥 Partecipanti")
-nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante")
+nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante", key="nuovo_partecipante_input")
 if st.sidebar.button("Aggiungi"):
-    if nuovo_partecipante and nuovo_partecipante not in st.session_state["partecipanti"]:
-        st.session_state["partecipanti"].append(nuovo_partecipante)
-        st.session_state["versamenti"][nuovo_partecipante] = 0.0
-        st.sidebar.success(f"Aggiunto {nuovo_partecipante}!")
+    valore = st.session_state["nuovo_partecipante_input"].strip()
+    if valore and valore not in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].append(valore)
+        st.session_state["versamenti"][valore] = 0.0
+        st.session_state["nuovo_partecipante_input"] = ""  # Pulisce il campo testo
+        st.sidebar.success(f"Aggiunto {valore}!")
         st.rerun()
+    elif valore in st.session_state["partecipanti"]:
+        st.sidebar.warning("Partecipante già esistente.")
 
 # Selezione partecipante da rimuovere
 partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
@@ -66,14 +77,15 @@ importo_versamento = st.sidebar.number_input("Importo versato (€)", min_value=
 tipo_versamento = st.sidebar.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
 
 if st.sidebar.button("Registra Versamento"):
-    if persona_versamento and importo_versamento > 0:
-        st.session_state["versamenti"][persona_versamento] += importo_versamento
+    if persona_versamento and st.session_state["imp_vers"] > 0:
+        st.session_state["versamenti"][persona_versamento] += st.session_state["imp_vers"]
         st.session_state["extra_versamenti"].append({
             "Partecipante": persona_versamento,
-            "Importo": importo_versamento,
+            "Importo": st.session_state["imp_vers"],
             "Tipo": tipo_versamento
         })
-        st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
+        st.sidebar.success(f"Registrati {st.session_state['imp_vers']}€ per {persona_versamento}!")
+        st.session_state["imp_vers"] = 0.0  # Pulisce l'importo
         st.rerun()
     else:
         st.sidebar.warning("Seleziona un partecipante e un importo valido.")
@@ -198,7 +210,7 @@ with col_r1:
         st.session_state["spese"] = []
         st.rerun()
 with col_r2:
-    if st.button("🗑️ Reset totale dati (Azzera tutto)"):
+    if st.button("🗑️ Reset totale dati (Annulla tutto)"):
         st.session_state["spese"] = []
         st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
         st.session_state["extra_versamenti"] = []
