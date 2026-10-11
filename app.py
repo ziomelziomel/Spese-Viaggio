@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Configurazione della pagina
-st.set_page_config(page_title="Spese di Viaggio", page_icon="✈️", layout="centered")
+st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
 
 # --- GESTIONE AUTENTICAZIONE ---
 if "authenticated" not in st.session_state:
@@ -18,52 +18,92 @@ if not st.session_state["authenticated"]:
             st.rerun()
         else:
             st.error("Password errata. Riprova.")
-    st.stop()  # Interrompe l'esecuzione finché non si effettua il login
+    st.stop()
 
 # --- APPLICAZIONE PRINCIPALE ---
-st.title("✈️ Gestione Spese di Viaggio")
+st.title("✈️ Gestione Cassa e Spese di Viaggio")
 
-# Inizializzazione della memoria delle spese e dei partecipanti nella sessione Streamlit
+# Inizializzazione delle strutture dati nella sessione
+if "partecipanti" not in st.session_state:
+    st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
+
+if "versamenti" not in st.session_state:
+    # Dizionario per memorizzare quanto versato inizialmente/extra da ciascuno
+    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+
 if "spese" not in st.session_state:
     st.session_state["spese"] = []
 
-if "partecipanti" not in st.session_state:
-    # Puoi personalizzare i nomi dei partecipanti del viaggio qui
-    st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
+if "extra_versamenti" not in st.session_state:
+    st.session_state["extra_versamenti"] = []
 
-# Menu laterale per configurare i partecipanti
-st.sidebar.header("⚙️ Impostazioni")
-nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante")
-if st.sidebar.button("Aggiungi"):
+# --- MENU LATERALE: GESTIONE PARTECIPANTI E VERSAMENTI ---
+st.sidebar.header("⚙️ Configurazione & Cassa")
+
+# Aggiunta partecipante
+nuovo_partecipante = st.sidebar.text_input("Nuovo partecipante")
+if st.sidebar.button("Aggiungi partecipante"):
     if nuovo_partecipante and nuovo_partecipante not in st.session_state["partecipanti"]:
         st.session_state["partecipanti"].append(nuovo_partecipante)
+        st.session_state["versamenti"][nuovo_partecipante] = 0.0
         st.sidebar.success(f"Aggiunto {nuovo_partecipante}!")
         st.rerun()
 
-st.sidebar.write("**Partecipanti attivi:**")
-st.sidebar.write(", ".join(st.session_state["partecipanti"]))
+st.sidebar.divider()
+st.sidebar.write("### 💰 Gestione Versamenti / Cassa")
+persona_versamento = st.sidebar.selectbox("Partecipante", st.session_state["partecipanti"], key="sel_vers")
+importo_versamento = st.sidebar.number_input("Importo versato (€)", min_value=0.0, format="%.2f", key="imp_vers")
+tipo_versamento = st.sidebar.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
+
+if st.sidebar.button("Registra Versamento"):
+    if importo_versamento > 0:
+        st.session_state["versamenti"][persona_versamento] += importo_versamento
+        st.session_state["extra_versamenti"].append({
+            "Partecipante": persona_versamento,
+            "Importo": importo_versamento,
+            "Tipo": tipo_versamento
+        })
+        st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
+        st.rerun()
+    else:
+        st.sidebar.warning("Inserisci un importo valido.")
 
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
 
-# --- SEZIONE 1: AGGIUNGI SPESA ---
-st.subheader("📝 Inserisci una nuova spesa")
+# --- CALCOLI FINANZIARI GENERALI ---
+totale_versato = sum(st.session_state["versamenti"].values())
+totale_speso = sum(s["Importo"] for s in st.session_state["spese"])
+cassa_rimanente = totale_versato - totale_speso
+
+# Mostra metriche principali della cassa
+col_m1, col_m2, col_m3 = st.columns(3)
+col_m1.metric("Cassa Totale Versata", f"{totale_versato:.2f} €")
+col_m2.metric("Spese Totali", f"{totale_speso:.2f} €")
+col_m3.metric("Disponibilità Cassa", f"{cassa_rimanente:.2f} €", delta=f"{cassa_rimanente:.2f} €")
+
+if cassa_rimanente < 0:
+    st.error("⚠️ **ATTENZIONE: La cassa comune è in rosso!** È necessario effettuare un incremento di cassa dalla barra laterale.")
+
+st.divider()
+
+# --- SEZIONE 1: REGISTRA SPESA DALLA CASSA ---
+st.subheader("📝 Registra Spesa / Prelievo dalla Cassa")
 
 with st.form("form_spesa", clear_on_submit=True):
-    descrizione = st.text_input("Descrizione spesa (es. Cena al ristorante, Taxi...)")
-    importo = st.number_input("Importo Totale (€)", min_value=0.0, format="%.2f")
-    pagato_da = st.selectbox("Chi ha anticipato i soldi?", st.session_state["partecipanti"])
+    descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
+    importo = st.number_input("Importo prelevato dalla cassa (€)", min_value=0.0, format="%.2f")
+    pagato_da_cassa = st.selectbox("Chi ha gestito il pagamento materiale?", st.session_state["partecipanti"])
     
     st.write("Seleziona chi partecipa a questa spesa:")
-    # Di default tutti sono selezionati
     partecipanti_coinvolti = {}
-    cols = st.columns(len(st.session_state["partecipanti"]))
+    cols = st.columns(min(len(st.session_state["partecipanti"]), 4))
     for i, p in enumerate(st.session_state["partecipanti"]):
         with cols[i % len(cols)]:
-            partecipanti_coinvolti[p] = st.checkbox(p, value=True)
+            partecipanti_coinvolti[p] = st.checkbox(p, value=True, key=f"p_{p}")
             
-    submitted = st.form_submit_button("Aggiungi Spesa")
+    submitted = st.form_submit_button("Registra Spesa")
     
     if submitted:
         coinvolti_list = [p for p, attivo in partecipanti_coinvolti.items() if attivo]
@@ -77,49 +117,54 @@ with st.form("form_spesa", clear_on_submit=True):
             st.session_state["spese"].append({
                 "Descrizione": descrizione,
                 "Importo": importo,
-                "Pagato da": pagato_da,
+                "Gestito da": pagato_da_cassa,
                 "Coinvolti": ", ".join(coinvolti_list),
                 "Num_Coinvolti": len(coinvolti_list)
             })
-            st.success(f"Spesa '{descrizione}' aggiunta con successo!")
+            st.success(f"Spesa '{descrizione}' registrata con successo!")
+            st.rerun()
 
-# --- SEZIONE 2: RIEPILOGO E BILANCI ---
+# --- SEZIONE 2: STORICO SPESE E BILANCI ---
 st.divider()
-st.subheader("📊 Riepilogo e Situazione Conti")
+st.subheader("📊 Riepilogo Movimenti e Saldi Individuali")
 
 if len(st.session_state["spese"]) > 0:
+    st.write("### Cronologia Spese")
     df_spese = pd.DataFrame(st.session_state["spese"])
     st.dataframe(df_spese, use_container_width=True)
-    
-    # Calcolo dei bilanci individuali
-    bilanci = {p: 0.0 for p in st.session_state["partecipanti"]}
-    
-    for spesa in st.session_state["spese"]:
-        pagatore = spesa["Pagato da"]
-        totale = spesa["Importo"]
-        coinvolti_N = spesa["Num_Coinvolti"]
-        quota_capite = totale / coinvolti_N
-        
-        # Chi paga guadagna credito (+ importo totale anticipato)
-        bilanci[pagatore] += totale
-        
-        # Chi partecipa accumula il debito (- quota individuale)
-        # Scompongo la stringa dei coinvolti per riattribuire le quote
-        lista_coinvolti_corrente = spesa["Coinvolti"].split(", ")
-        for p in lista_coinvolti_corrente:
-            if p in bilanci:
-                bilanci[p] -= quota_capite
 
-    st.write("### 💶 Saldo finale per persona:")
-    st.info("Valori positivi (+) = devono avere soldi | Valori negativi (-) = devono dare soldi")
+# Calcolo dei saldi individuali
+# Saldo = (Quanto ha versato in cassa) - (La somma delle quote delle spese a cui ha partecipato)
+quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
+
+for spesa in st.session_state["spese"]:
+    totale = spesa["Importo"]
+    n_coinvolti = spesa["Num_Coinvolti"]
+    quota_capite = totale / n_coinvolti
     
-    col1, col2 = st.columns(2)
-    for i, (persona, saldo) in enumerate(bilanci.items()):
-        col = col1 if i % 2 == 0 else col2
-        col.metric(label=persona, value=f"{saldo:.2f} €")
-        
-    if st.button("🗑️ Cancella tutte le spese"):
-        st.session_state["spese"] = []
-        st.rerun()
-else:
-    st.info("Nessuna spesa inserita finora. Aggiungi la prima spesa qui sopra!")
+    lista_coinvolti = spesa["Coinvolti"].split(", ")
+    for p in lista_coinvolti:
+        if p in quote_spese:
+            quote_spese[p] += quota_capite
+
+st.write("### 💶 Situazione Contabile per Persona:")
+st.info("• **Versato:** Totale immesso nella cassa comune.\n• **Speso a carico:** La somma delle quote dei vari acquisti.\n• **Saldo:** Positivo (+) = credito/rimanenza | Negativo (-) = deve versare ancora nella cassa.")
+
+col_res1, col_res2 = st.columns(2)
+for i, p in enumerate(st.session_state["partecipanti"]):
+    versato_p = st.session_state["versamenti"][p]
+    speso_p = quote_spese[p]
+    saldo_p = versato_p - speso_p
+    
+    col = col_res1 if i % 2 == 0 else col_res2
+    with col:
+        st.markdown(f"**👤 {p}**")
+        st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €")
+        st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
+        st.markdown("---")
+
+if st.button("🗑️ Reset totale dati (Azzera tutto)"):
+    st.session_state["spese"] = []
+    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+    st.session_state["extra_versamenti"] = []
+    st.rerun()
