@@ -39,6 +39,10 @@ if "extra_versamenti" not in st.session_state:
 if "input_nuovo_partecipante" not in st.session_state:
     st.session_state["input_nuovo_partecipante"] = ""
 
+# Contatore per forzare il reset pulito dei campi di versamento nella sidebar
+if "reset_vers_counter" not in st.session_state:
+    st.session_state["reset_vers_counter"] = 0
+
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
@@ -68,27 +72,41 @@ if st.sidebar.button("Rimuovi"):
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa (Tramite Form per azzerare tendina e importo)
+# 2. Gestione Versamenti in Cassa (Con chiavi dinamiche legate al contatore di reset)
 st.sidebar.subheader("💰 Versamenti Cassa")
-with st.sidebar.form("form_versamento_sidebar", clear_on_submit=True):
-    persona_versamento = st.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""])
-    importo_versamento = st.number_input("Importo versato (€)", min_value=0.0, format="%.2f")
-    tipo_versamento = st.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
-    
-    btn_reg_vers = st.form_submit_button("Registra Versamento")
-    
-    if btn_reg_vers:
-        if persona_versamento and importo_versamento > 0:
-            st.session_state["versamenti"][persona_versamento] += importo_versamento
-            st.session_state["extra_versamenti"].append({
-                "Partecipante": persona_versamento,
-                "Importo": importo_versamento,
-                "Tipo": tipo_versamento
-            })
-            st.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
-            st.rerun()
-        else:
-            st.warning("Seleziona un partecipante e un importo valido.")
+c = st.session_state["reset_vers_counter"]
+
+persona_versamento = st.sidebar.selectbox(
+    "Partecipante", 
+    [""] + st.session_state["partecipanti"], 
+    key=f"sel_vers_{c}"
+)
+importo_versamento = st.sidebar.number_input(
+    "Importo versato (€)", 
+    min_value=0.0, 
+    format="%.2f", 
+    key=f"imp_vers_{c}"
+)
+tipo_versamento = st.sidebar.radio(
+    "Tipo versamento", 
+    ["Iniziale", "Incremento (Cassa in rosso)"], 
+    key=f"tipo_vers_{c}"
+)
+
+if st.sidebar.button("Registra Versamento"):
+    if persona_versamento and persona_versamento != "" and importo_versamento > 0:
+        st.session_state["versamenti"][persona_versamento] += importo_versamento
+        st.session_state["extra_versamenti"].append({
+            "Partecipante": persona_versamento,
+            "Importo": importo_versamento,
+            "Tipo": tipo_versamento
+        })
+        st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
+        # Incrementiamo il contatore per forzare la pulizia dei campi al prossimo giro
+        st.session_state["reset_vers_counter"] += 1
+        st.rerun()
+    else:
+        st.sidebar.warning("Seleziona un partecipante valido e un importo maggiore di zero.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -215,4 +233,5 @@ with col_r2:
         st.session_state["spese"] = []
         st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
         st.session_state["extra_versamenti"] = []
+        st.session_state["reset_vers_counter"] = 0
         st.rerun()
