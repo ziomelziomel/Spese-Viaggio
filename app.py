@@ -28,7 +28,6 @@ if "partecipanti" not in st.session_state:
     st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
 
 if "versamenti" not in st.session_state:
-    # Dizionario per memorizzare quanto versato inizialmente/extra da ciascuno
     st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
 
 if "spese" not in st.session_state:
@@ -40,23 +39,34 @@ if "extra_versamenti" not in st.session_state:
 # --- MENU LATERALE: GESTIONE PARTECIPANTI E VERSAMENTI ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
-# Aggiunta partecipante
-nuovo_partecipante = st.sidebar.text_input("Nuovo partecipante")
-if st.sidebar.button("Aggiungi partecipante"):
+# Gestione partecipanti (Aggiunta e Rimozione)
+st.sidebar.subheader("👥 Partecipanti")
+nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante")
+if st.sidebar.button("Aggiungi"):
     if nuovo_partecipante and nuovo_partecipante not in st.session_state["partecipanti"]:
         st.session_state["partecipanti"].append(nuovo_partecipante)
         st.session_state["versamenti"][nuovo_partecipante] = 0.0
         st.sidebar.success(f"Aggiunto {nuovo_partecipante}!")
         st.rerun()
 
+# Selezione partecipante da rimuovere
+partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
+if st.sidebar.button("Rimuovi"):
+    if partecipante_da_rimuovere in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
+        if partecipante_da_rimuovere in st.session_state["versamenti"]:
+            del st.session_state["versamenti"][partecipante_da_rimuovere]
+        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+        st.rerun()
+
 st.sidebar.divider()
 st.sidebar.write("### 💰 Gestione Versamenti / Cassa")
-persona_versamento = st.sidebar.selectbox("Partecipante", st.session_state["partecipanti"], key="sel_vers")
+persona_versamento = st.sidebar.selectbox("Partecipante", st.session_state["partecipanti"] if st.session_state["partecipanti"] else [""], key="sel_vers")
 importo_versamento = st.sidebar.number_input("Importo versato (€)", min_value=0.0, format="%.2f", key="imp_vers")
 tipo_versamento = st.sidebar.radio("Tipo versamento", ["Iniziale", "Incremento (Cassa in rosso)"])
 
 if st.sidebar.button("Registra Versamento"):
-    if importo_versamento > 0:
+    if persona_versamento and importo_versamento > 0:
         st.session_state["versamenti"][persona_versamento] += importo_versamento
         st.session_state["extra_versamenti"].append({
             "Partecipante": persona_versamento,
@@ -66,11 +76,16 @@ if st.sidebar.button("Registra Versamento"):
         st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
         st.rerun()
     else:
-        st.sidebar.warning("Inserisci un importo valido.")
+        st.sidebar.warning("Seleziona un partecipante e un importo valido.")
 
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
+
+# --- CONTROLLI PRELIMINARI ---
+if not st.session_state["partecipanti"]:
+    st.warning("⚠️ Non ci sono partecipanti configurati. Aggiungi almeno un partecipante dalla barra laterale.")
+    st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
 totale_versato = sum(st.session_state["versamenti"].values())
@@ -88,13 +103,19 @@ if cassa_rimanente < 0:
 
 st.divider()
 
-# --- SEZIONE 1: REGISTRA SPESA DALLA CASSA ---
-st.subheader("📝 Registra Spesa / Prelievo dalla Cassa")
+# --- SEZIONE 1: REGISTRA SPESA ---
+st.subheader("📝 Registra Spesa")
 
 with st.form("form_spesa", clear_on_submit=True):
     descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
-    importo = st.number_input("Importo prelevato dalla cassa (€)", min_value=0.0, format="%.2f")
-    pagato_da_cassa = st.selectbox("Chi ha gestito il pagamento materiale?", st.session_state["partecipanti"])
+    importo = st.number_input("Importo (€)", min_value=0.0, format="%.2f")
+    
+    # Scelta chi paga: Cassa comune oppure anticipo di un singolo partecipante
+    modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
+    
+    pagato_da = "Cassa Comune"
+    if modalita_pagamento == "Anticipato da un partecipante":
+        pagato_da = st.selectbox("Chi ha anticipato i soldi?", st.session_state["partecipanti"])
     
     st.write("Seleziona chi partecipa a questa spesa:")
     partecipanti_coinvolti = {}
@@ -117,7 +138,7 @@ with st.form("form_spesa", clear_on_submit=True):
             st.session_state["spese"].append({
                 "Descrizione": descrizione,
                 "Importo": importo,
-                "Gestito da": pagato_da_cassa,
+                "Pagato da": pagato_da,
                 "Coinvolti": ", ".join(coinvolti_list),
                 "Num_Coinvolti": len(coinvolti_list)
             })
@@ -134,32 +155,41 @@ if len(st.session_state["spese"]) > 0:
     st.dataframe(df_spese, use_container_width=True)
 
 # Calcolo dei saldi individuali
-# Saldo = (Quanto ha versato in cassa) - (La somma delle quote delle spese a cui ha partecipato)
+# Se la spesa è pagata dalla cassa: pesa solo come quota a carico del partecipante.
+# Se la spesa è anticipata da un partecipante: chi ha anticipato riceve un credito pari all'importo, e ciascuno paga la sua quota.
 quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
+crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
 
 for spesa in st.session_state["spese"]:
     totale = spesa["Importo"]
+    pagatore = spesa["Pagato da"]
     n_coinvolti = spesa["Num_Coinvolti"]
     quota_capite = totale / n_coinvolti
     
+    if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
+        crediti_anticipi[pagatore] += totale
+        
     lista_coinvolti = spesa["Coinvolti"].split(", ")
     for p in lista_coinvolti:
         if p in quote_spese:
             quote_spese[p] += quota_capite
 
 st.write("### 💶 Situazione Contabile per Persona:")
-st.info("• **Versato:** Totale immesso nella cassa comune.\n• **Speso a carico:** La somma delle quote dei vari acquisti.\n• **Saldo:** Positivo (+) = credito/rimanenza | Negativo (-) = deve versare ancora nella cassa.")
+st.info("• **Versato in cassa:** Soldi immessi nel fondo comune.\n• **Spesa a carico:** Totale delle quote dei vari acquisti.\n• **Anticipi extra:** Soldi spesi di tasca propria (se applicabile).\n• **Saldo:** Positivo (+) = credito/rimanenza | Negativo (-) = deve integrare o versare.")
 
 col_res1, col_res2 = st.columns(2)
 for i, p in enumerate(st.session_state["partecipanti"]):
-    versato_p = st.session_state["versamenti"][p]
-    speso_p = quote_spese[p]
-    saldo_p = versato_p - speso_p
+    versato_p = st.session_state["versamenti"].get(p, 0.0)
+    speso_p = quote_spese.get(p, 0.0)
+    anticipato_p = crediti_anticipi.get(p, 0.0)
+    
+    # Saldo = Versato in cassa + Anticipi fatti di tasca propria - Spese a suo carico
+    saldo_p = (versato_p + anticipato_p) - speso_p
     
     col = col_res1 if i % 2 == 0 else col_res2
     with col:
         st.markdown(f"**👤 {p}**")
-        st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €")
+        st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €\nAnticipi tasca:  {anticipato_p:.2f} €")
         st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
         st.markdown("---")
 
