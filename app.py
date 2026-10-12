@@ -63,9 +63,8 @@ if st.sidebar.button("Aggiungi"):
 partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
 if st.sidebar.button("Rimuovi"):
     if partecipante_da_rimuovere in st.session_state["partecipanti"]:
-        # Controllo di sicurezza: non permettiamo di rimuovere l'ultimo partecipante rimasto
         if len(st.session_state["partecipanti"]) <= 1:
-            st.sidebar.error("Non puoi rimuovere tutti i partecipanti! Deve essercie almeno uno.")
+            st.sidebar.error("Non puoi rimuovere tutti i partecipanti! Deve essercene almeno uno.")
         else:
             st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
             if partecipante_da_rimuovere in st.session_state["versamenti"]:
@@ -199,7 +198,7 @@ for spesa in st.session_state["spese"]:
         crediti_anticipi[pagatore] += totale
         
     coinvolti_str = spesa.get("Coinvolti", "")
-    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_strelse []
+    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_str else []
     
     if n_coinvolti == 0:
         n_coinvolti = max(len(lista_coinvolti), 1)
