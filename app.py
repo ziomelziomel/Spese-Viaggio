@@ -24,12 +24,12 @@ if not st.session_state["authenticated"]:
 # --- APPLICAZIONE PRINCIPALE ---
 st.title("✈️ Gestione Cassa e Spese di Viaggio")
 
-# Inizializzazione delle strutture dati di base
-if "partecipanti" not in st.session_state:
-    st.session_state["partecipanti"] = []
+# Inizializzazione sicura con dati di default per evitare blocchi
+if "partecipanti" not in st.session_state or not st.session_state["partecipanti"]:
+    st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
 
-if "versamenti" not in st.session_state:
-    st.session_state["versamenti"] = {}
+if "versamenti" not in st.session_state or not st.session_state["versamenti"]:
+    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
 
 if "spese" not in st.session_state:
     st.session_state["spese"] = []
@@ -88,7 +88,7 @@ persona_versamento = st.sidebar.selectbox(
     [""] + partecipanti_validi, 
     key=f"sel_vers_{c}"
 )
-importo_versamento_str = st.text_input(
+importo_versamento_str = st.sidebar.text_input(
     "Importo versato (€) (es. 50.00 o 12.50)", 
     value="", 
     key=f"imp_vers_{c}"
@@ -122,51 +122,39 @@ if st.sidebar.button("Registra Versamento"):
 
 st.sidebar.divider()
 
-# 3. Backup e Ripristino Testuale (A prova di iPhone)
-st.sidebar.subheader("📋 Backup & Ripristino Testuale")
-
-# Prepara il pacchetto di dati in formato JSON testuale
+# 3. Backup & Ripristino Testuale Semplice
+st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
     "versamenti": st.session_state["versamenti"],
     "spese": st.session_state["spese"]
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
+st.sidebar.text_area("Copia questo codice per salvarlo:", value=codice_backup, height=80)
 
-st.sidebar.text_area("Copia questo codice (Tieni premuto -> Seleziona tutto -> Copia):", value=codice_backup, height=100)
-
-codice_da_ripristinare = st.sidebar.text_area("Incolla qui il codice per ripristinare:", value="", height=100, key="txt_ripristino")
-
-if st.sidebar.button("🔄 Ripristina da Codice"):
+codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
+if st.sidebar.button("🔄 Ripristina"):
     if codice_da_ripristinare.strip():
         try:
             dati_caricati = json.loads(codice_da_ripristinare.strip())
-            st.session_state["partecipanti"] = dati_caricati.get("partecipanti", [])
+            st.session_state["partecipanti"] = dati_caricati.get("partecipanti", ["Mario", "Anna", "Luca", "Sara"])
             st.session_state["versamenti"] = dati_caricati.get("versamenti", {})
             st.session_state["spese"] = dati_caricati.get("spese", [])
-            st.sidebar.success("Dati ripristinati con successo!")
+            st.sidebar.success("Ripristinato!")
             st.rerun()
-        except Exception as e:
-            st.sidebar.error("Codice non valido o incompleto. Controlla di averlo copiato tutto.")
-    else:
-            st.sidebar.warning("Incolla prima il codice nel campo sopra.")
+        except:
+            st.sidebar.error("Codice non valido.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
 
-# --- CONTROLLI PRELIMINARI E PULIZIA EMERGENZA ---
-if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale oppure incolla il tuo codice di backup testuale nella barra laterale per ripristinare i dati.")
-    st.stop()
-
 # --- CALCOLI FINANZIARI GENERALI ---
 totale_versato = sum(st.session_state["versamenti"].values())
 totale_speso = sum(float(s.get("Importo", 0.0)) for s in st.session_state["spese"])
 cassa_rimanente = totale_versato - totale_speso
 
-# Mostra metriche principali della cassa con 2 decimali fissi
 col_m1, col_m2, col_m3 = st.columns(3)
 col_m1.metric("Cassa Totale Versata", f"{totale_versato:.2f} €")
 col_m2.metric("Spese Totali", f"{totale_speso:.2f} €")
@@ -232,7 +220,6 @@ if len(st.session_state["spese"]) > 0:
     df_spese = pd.DataFrame(st.session_state["spese"])
     st.dataframe(df_spese, use_container_width=True)
 
-# Calcolo dei saldi individuali in modo sicuro
 quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
 crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
 
@@ -278,8 +265,8 @@ with col_r1:
         st.rerun()
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
-        st.session_state["partecipanti"] = []
-        st.session_state["versamenti"] = {}
+        st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
+        st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
         st.session_state["spese"] = []
         st.session_state["extra_versamenti"] = []
         st.session_state["reset_vers_counter"] += 1
