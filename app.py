@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import io
 
 # Configurazione della pagina
 st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
@@ -23,12 +24,12 @@ if not st.session_state["authenticated"]:
 # --- APPLICAZIONE PRINCIPALE ---
 st.title("✈️ Gestione Cassa e Spese di Viaggio")
 
-# Inizializzazione delle strutture dati nella sessione
+# Inizializzazione delle strutture dati (Partenza pulita senza nomi di default)
 if "partecipanti" not in st.session_state:
-    st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
+    st.session_state["partecipanti"] = []
 
 if "versamenti" not in st.session_state:
-    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+    st.session_state["versamenti"] = {}
 
 if "spese" not in st.session_state:
     st.session_state["spese"] = []
@@ -42,7 +43,7 @@ if "reset_vers_counter" not in st.session_state:
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
-# 1. Gestione Partecipanti tramite Form (evita la sparizione dei campi e gli errori di ricaricamento)
+# 1. Gestione Partecipanti tramite Form
 st.sidebar.subheader("👥 Partecipanti")
 
 with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
@@ -63,7 +64,7 @@ with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
         else:
             st.warning("Inserisci un nome valido.")
 
-# Rimozione partecipante (gestita in sicurezza)
+# Rimozione partecipante
 lista_rimozione = [""] + st.session_state["partecipanti"]
 partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", lista_rimozione)
 if st.sidebar.button("Rimuovi"):
@@ -76,7 +77,7 @@ if st.sidebar.button("Rimuovi"):
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa (Con chiavi dinamiche legate al contatore di reset)
+# 2. Gestione Versamenti in Cassa
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
@@ -87,10 +88,9 @@ persona_versamento = st.sidebar.selectbox(
     [""] + partecipanti_validi, 
     key=f"sel_vers_{c}"
 )
-importo_versamento = st.sidebar.number_input(
-    "Importo versato (€)", 
-    min_value=0.0, 
-    format="%.2f", 
+importo_versamento_str = st.sidebar.text_input(
+    "Importo versato (€) (es. 50 o 12.50)", 
+    value="", 
     key=f"imp_vers_{c}"
 )
 tipo_versamento = st.sidebar.radio(
@@ -100,6 +100,11 @@ tipo_versamento = st.sidebar.radio(
 )
 
 if st.sidebar.button("Registra Versamento"):
+    try:
+        importo_versamento = float(importo_versamento_str.replace(',', '.'))
+    except ValueError:
+        importo_versamento = 0.0
+
     if persona_versamento and persona_versamento != "" and importo_versamento > 0:
         if persona_versamento not in st.session_state["versamenti"]:
             st.session_state["versamenti"][persona_versamento] = 0.0
@@ -109,11 +114,28 @@ if st.sidebar.button("Registra Versamento"):
             "Importo": importo_versamento,
             "Tipo": tipo_versamento
         })
-        st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
+        st.sidebar.success(f"Registrati {importo_versamento:.2f}€ per {persona_versamento}!")
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
     else:
-        st.sidebar.warning("Seleziona un partecipante valido e un importo maggiore di zero.")
+        st.sidebar.warning("Seleziona un partecipante valido e inserisci un importo maggiore di zero.")
+
+st.sidebar.divider()
+
+# 3. Backup Dati (Esportazione ed Importazione)
+st.sidebar.subheader("💾 Backup Dati (Excel/CSV)")
+
+# Esportazione in CSV dei dati correnti
+if st.session_state["spese"] or st.session_state["partecipanti"]:
+    # Prepariamo un piccolo riepilogo da scaricare
+    dati_export = pd.DataFrame(st.session_state["spese"])
+    csv_data = dati_export.to_csv(index=False).encode('utf-8')
+    st.sidebar.download_button(
+        label="📥 Scarica Backup Spese",
+        data=csv_data,
+        file_name="backup_spese_viaggio.csv",
+        mime="text/csv"
+    )
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -122,7 +144,7 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ Non ci sono partecipanti configurati. Aggiungi almeno un partecipante dalla barra laterale per procedere.")
+    st.warning("⚠️ **Benvenuti!** Non ci sono partecipanti configurati. Aggiungete i partecipanti (es. i vostri nomi) dalla barra laterale per iniziare.")
     st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
@@ -146,7 +168,7 @@ st.subheader("📝 Registra Spesa")
 
 with st.form("form_spesa", clear_on_submit=True):
     descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
-    importo = st.number_input("Importo (€)", min_value=0.0, format="%.2f")
+    importo_spesa_str = st.text_input("Importo (€) (es. 25 o 12.50)", value="")
     
     modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
     
@@ -164,17 +186,22 @@ with st.form("form_spesa", clear_on_submit=True):
     submitted = st.form_submit_button("Registra Spesa")
     
     if submitted:
+        try:
+            importo_spesa = float(importo_spesa_str.replace(',', '.'))
+        except ValueError:
+            importo_spesa = 0.0
+
         coinvolti_list = [p for p, attivo in partecipanti_coinvolti.items() if attivo]
         if not descrizione:
             st.warning("Inserisci una descrizione per la spesa.")
-        elif importo <= 0:
+        elif importo_spesa <= 0:
             st.warning("L'importo deve essere maggiore di zero.")
         elif not coinvolti_list:
             st.warning("Seleziona almeno un partecipante per questa spesa.")
         else:
             st.session_state["spese"].append({
                 "Descrizione": descrizione,
-                "Importo": importo,
+                "Importo": importo_spesa,
                 "Pagato da": pagato_da,
                 "Coinvolti": ", ".join(coinvolti_list),
                 "Num_Coinvolti": len(coinvolti_list)
@@ -210,7 +237,7 @@ for spesa in st.session_state["spese"]:
         n_coinvolti = max(len(lista_coinvolti), 1)
         
     quota_capite = totale / n_coinvolti
-    for p in lista_coinvolti:
+    for p in lista_coin_volti if 'lista_coin_volti' in locals() else lista_coinvolti:
         if p in quote_spese:
             quote_spese[p] += quota_capite
 
@@ -237,8 +264,8 @@ with col_r1:
         st.rerun()
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
-        st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
-        st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+        st.session_state["partecipanti"] = []
+        st.session_state["versamenti"] = {}
         st.session_state["spese"] = []
         st.session_state["extra_versamenti"] = []
         st.session_state["reset_vers_counter"] += 1
