@@ -11,7 +11,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state["authenticated"]:
     st.title("🔒 Area Riservata - Spese Viaggio")
-    password = st.text_input("Inserisci la password per accedere:", type="password")
+    password = st.text_input("Inserisci la password per accedere:", type="password", key="login_pass")
     
     if st.button("Accedi"):
         if password == "viaggio2026":
@@ -24,7 +24,7 @@ if not st.session_state["authenticated"]:
 # --- APPLICAZIONE PRINCIPALE ---
 st.title("✈️ Gestione Cassa e Spese di Viaggio")
 
-# Inizializzazione delle strutture dati con recupero sicuro
+# Inizializzazione delle strutture dati di base
 if "partecipanti" not in st.session_state:
     st.session_state["partecipanti"] = []
 
@@ -126,7 +126,6 @@ st.sidebar.divider()
 st.sidebar.subheader("💾 Backup & Ripristino Excel")
 
 if st.session_state["spese"] or st.session_state["partecipanti"]:
-    # Creazione file Excel in memoria con più fogli (Spese e Versamenti)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_spese_exp = pd.DataFrame(st.session_state["spese"]) if st.session_state["spese"] else pd.DataFrame(columns=["Descrizione", "Importo", "Pagato da", "Coinvolti", "Num_Coinvolti"])
@@ -144,35 +143,59 @@ if st.session_state["spese"] or st.session_state["partecipanti"]:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# Ripristino da file Excel di backup
+# Ripristino sicuro da file Excel di backup
 uploaded_file = st.sidebar.file_uploader("📤 Ripristina da Backup Excel", type=["xlsx"])
 if uploaded_file is not None:
     try:
-        df_spese_imp = pd.read_excel(uploaded_file, sheet_name='Spese')
-        df_vers_imp = pd.read_excel(uploaded_file, sheet_name='Versamenti')
-        
-        st.session_state["spese"] = df_spese_imp.to_dict(orient='records')
-        st.session_state["versamenti"] = dict(zip(df_vers_imp["Partecipante"], df_vers_imp["Versato"]))
-        st.session_state["partecipanti"] = list(st.session_state["versamenti"].keys())
-        
-        st.sidebar.success("Backup ripristinato con successo!")
-        st.rerun()
+        xl = pd.ExcelFile(uploaded_file)
+        if 'Spese' in xl.sheet_names and 'Versamenti' in xl.sheet_names:
+            df_spese_imp = xl.parse('Spese')
+            df_vers_imp = xl.parse('Versamenti')
+            
+            # Pulisce eventuali valori NaN
+            df_spese_imp = df_spese_imp.fillna("")
+            df_vers_imp = df_vers_imp.fillna(0)
+            
+            st.session_state["spese"] = df_spese_imp.to_dict(orient='records') if not df_spese_imp.empty else []
+            
+            versamenti_dict = {}
+            for _, row in df_vers_imp.iterrows():
+                p = str(row.get("Partecipante", "")).strip()
+                if p:
+                    try:
+                        v = float(row.get("Versato", 0.0))
+                    except:
+                        v = 0.0
+                    versamenti_dict[p] = v
+            
+            st.session_state["versamenti"] = versamenti_dict
+            st.session_state["partecipanti"] = list(versamenti_dict.keys())
+            
+            st.sidebar.success("Backup ripristinato con successo!")
+            st.rerun()
+        else:
+            st.sidebar.error("Il file Excel non contiene i fogli corretti ('Spese' e 'Versamenti').")
     except Exception as e:
-        st.sidebar.error("Errore nel caricamento del file di backup.")
+        st.sidebar.error("Errore durante la lettura del file di backup.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
 
-# --- CONTROLLI PRELIMINARI ---
+# --- CONTROLLI PRELIMINARI E PULIZIA EMERGENZA ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Benvenuti!** Non ci sono partecipanti configurati. Aggiungete i partecipanti dalla barra laterale per iniziare, oppure caricate un file Excel di backup.")
+    st.warning("⚠️ **Nessun partecipante trovato** (potrebbe essere dovuto a un file di backup vuoto o non valido).")
+    if st.button("🔄 Ripristina configurazione pulita (Annulla blocco)"):
+        st.session_state["partecipanti"] = []
+        st.session_state["versamenti"] = {}
+        st.session_state["spese"] = []
+        st.rerun()
     st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
 totale_versato = sum(st.session_state["versamenti"].values())
-totale_speso = sum(s.get("Importo", 0.0) for s in st.session_state["spese"])
+totale_speso = sum(float(s.get("Importo", 0.0)) for s in st.session_state["spese"])
 cassa_rimanente = totale_versato - totale_speso
 
 # Mostra metriche principali della cassa
@@ -246,15 +269,15 @@ quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
 crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
 
 for spesa in st.session_state["spese"]:
-    totale = spesa.get("Importo", 0.0)
-    pagatore = spesa.get("Pagato da", spesa.get("Gestito da", "Cassa Comune"))
-    n_coinvolti = spesa.get("Num_Coinvolti", 1)
+    totale = float(spesa.get("Importo", 0.0))
+    pagatore = spesa.get("Pagato da", "Cassa Comune")
+    n_coinvolti = int(spesa.get("Num_Coinvolti", 1))
     
     if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
         crediti_anticipi[pagatore] += totale
         
-    coinvolti_str = spesa.get("Coinvolti", "")
-    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_str else []
+    coinvolti_str = str(spesa.get("Coinvolti", ""))
+    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()]
     
     if n_coinvolti == 0:
         n_coinvolti = max(len(lista_coinvolti), 1)
