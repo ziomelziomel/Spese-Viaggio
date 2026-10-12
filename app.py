@@ -39,7 +39,6 @@ if "extra_versamenti" not in st.session_state:
 if "input_nuovo_partecipante" not in st.session_state:
     st.session_state["input_nuovo_partecipante"] = ""
 
-# Contatore per forzare il reset pulito dei campi di versamento nella sidebar
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
 
@@ -64,15 +63,19 @@ if st.sidebar.button("Aggiungi"):
 partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
 if st.sidebar.button("Rimuovi"):
     if partecipante_da_rimuovere in st.session_state["partecipanti"]:
-        st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
-        if partecipante_da_rimuovere in st.session_state["versamenti"]:
-            del st.session_state["versamenti"][partecipante_da_rimuovere]
-        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
-        st.rerun()
+        # Controllo di sicurezza: non permettiamo di rimuovere l'ultimo partecipante rimasto
+        if len(st.session_state["partecipanti"]) <= 1:
+            st.sidebar.error("Non puoi rimuovere tutti i partecipanti! Deve essercie almeno uno.")
+        else:
+            st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
+            if partecipante_da_rimuovere in st.session_state["versamenti"]:
+                del st.session_state["versamenti"][partecipante_da_rimuovere]
+            st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+            st.rerun()
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa (Con chiavi dinamiche legate al contatore di reset)
+# 2. Gestione Versamenti in Cassa
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
@@ -102,7 +105,6 @@ if st.sidebar.button("Registra Versamento"):
             "Tipo": tipo_versamento
         })
         st.sidebar.success(f"Registrati {importo_versamento}€ per {persona_versamento}!")
-        # Incrementiamo il contatore per forzare la pulizia dei campi al prossimo giro
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
     else:
@@ -197,7 +199,7 @@ for spesa in st.session_state["spese"]:
         crediti_anticipi[pagatore] += totale
         
     coinvolti_str = spesa.get("Coinvolti", "")
-    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_str else []
+    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()] if coinvolti_strelse []
     
     if n_coinvolti == 0:
         n_coinvolti = max(len(lista_coinvolti), 1)
@@ -230,8 +232,9 @@ with col_r1:
         st.rerun()
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
-        st.session_state["spese"] = []
+        st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
         st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+        st.session_state["spese"] = []
         st.session_state["extra_versamenti"] = []
-        st.session_state["reset_vers_counter"] = 0
+        st.session_state["reset_vers_counter"] += 1
         st.rerun()
