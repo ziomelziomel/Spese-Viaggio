@@ -36,35 +36,34 @@ if "spese" not in st.session_state:
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = []
 
-if "input_nuovo_partecipante" not in st.session_state:
-    st.session_state["input_nuovo_partecipante"] = ""
-
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
 
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
-# 1. Gestione Partecipanti
+# 1. Gestione Partecipanti tramite Form (evita la sparizione dei campi e gli errori di ricaricamento)
 st.sidebar.subheader("👥 Partecipanti")
-nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante", key="input_nuovo_partecipante")
 
-if st.sidebar.button("Aggiungi"):
-    valore = st.session_state["input_nuovo_partecipante"].strip()
-    if valore:
-        if valore not in st.session_state["partecipanti"]:
-            st.session_state["partecipanti"].append(valore)
-            if valore not in st.session_state["versamenti"]:
-                st.session_state["versamenti"][valore] = 0.0
-            st.session_state["input_nuovo_partecipante"] = ""  # Pulisce il campo
-            st.sidebar.success(f"Aggiunto {valore}!")
-            st.rerun()
+with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
+    nuovo_partecipante = st.text_input("Nome nuovo partecipante")
+    btn_aggiungi = st.form_submit_button("Aggiungi")
+    
+    if btn_aggiungi:
+        valore = nuovo_partecipante.strip()
+        if valore:
+            if valore not in st.session_state["partecipanti"]:
+                st.session_state["partecipanti"].append(valore)
+                if valore not in st.session_state["versamenti"]:
+                    st.session_state["versamenti"][valore] = 0.0
+                st.success(f"Aggiunto {valore}!")
+                st.rerun()
+            else:
+                st.warning("Il partecipante esiste già.")
         else:
-            st.sidebar.warning("Il partecipante esiste già.")
-    else:
-        st.sidebar.warning("Inserisci un nome valido.")
+            st.warning("Inserisci un nome valido.")
 
-# Selezione per la rimozione (gestita in modo sicuro anche se la lista è vuota)
+# Rimozione partecipante (gestita in sicurezza)
 lista_rimozione = [""] + st.session_state["partecipanti"]
 partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", lista_rimozione)
 if st.sidebar.button("Rimuovi"):
@@ -77,7 +76,7 @@ if st.sidebar.button("Rimuovi"):
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa
+# 2. Gestione Versamenti in Cassa (Con chiavi dinamiche legate al contatore di reset)
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
