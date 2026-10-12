@@ -88,8 +88,8 @@ persona_versamento = st.sidebar.selectbox(
     [""] + partecipanti_validi, 
     key=f"sel_vers_{c}"
 )
-importo_versamento_str = st.sidebar.text_input(
-    "Importo versato (€) (es. 50 o 12.50)", 
+importo_versamento_str = st.text_input(
+    "Importo versato (€) (es. 50.00 o 12.50)", 
     value="", 
     key=f"imp_vers_{c}"
 )
@@ -111,7 +111,7 @@ if st.sidebar.button("Registra Versamento"):
         st.session_state["versamenti"][persona_versamento] += importo_versamento
         st.session_state["extra_versamenti"].append({
             "Partecipante": persona_versamento,
-            "Importo": importo_versamento,
+            "Importo": round(importo_versamento, 2),
             "Tipo": tipo_versamento
         })
         st.sidebar.success(f"Registrati {importo_versamento:.2f}€ per {persona_versamento}!")
@@ -143,40 +143,60 @@ if st.session_state["spese"] or st.session_state["partecipanti"]:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# Ripristino sicuro da file Excel di backup
+# Ripristino ultra-robusto da file Excel di backup
 uploaded_file = st.sidebar.file_uploader("📤 Ripristina da Backup Excel", type=["xlsx"])
 if uploaded_file is not None:
     try:
         xl = pd.ExcelFile(uploaded_file)
-        if 'Spese' in xl.sheet_names and 'Versamenti' in xl.sheet_names:
-            df_spese_imp = xl.parse('Spese')
-            df_vers_imp = xl.parse('Versamenti')
-            
-            # Pulisce eventuali valori NaN
-            df_spese_imp = df_spese_imp.fillna("")
-            df_vers_imp = df_vers_imp.fillna(0)
-            
+        
+        # Legge il foglio Spese se esiste
+        if 'Spese' in xl.sheet_names:
+            df_spese_imp = xl.parse('Spese').fillna("")
             st.session_state["spese"] = df_spese_imp.to_dict(orient='records') if not df_spese_imp.empty else []
-            
-            versamenti_dict = {}
+        else:
+            st.session_state["spese"] = []
+
+        # Legge il foglio Versamenti se esiste
+        versamenti_dict = {}
+        if 'Versamenti' in xl.sheet_names:
+            df_vers_imp = xl.parse('Versamenti').fillna("")
             for _, row in df_vers_imp.iterrows():
-                p = str(row.get("Partecipante", "")).strip()
-                if p:
-                    try:
-                        v = float(row.get("Versato", 0.0))
-                    except:
-                        v = 0.0
-                    versamenti_dict[p] = v
-            
+                # Prende la prima colonna come nome e la seconda come importo indipendentemente dai nomi delle intestazioni
+                cols = list(row.index)
+                if len(cols) >= 2:
+                    p = str(row.iloc[0]).strip()
+                    if p and p.lower() != 'nan':
+                        try:
+                            v = float(str(row.iloc[1]).replace(',', '.'))
+                        except:
+                            v = 0.0
+                        versamenti_dict[p] = round(v, 2)
+        
+        # Se il foglio Versamenti non c'è ma ci sono partecipanti registrati nelle spese
+        if not versamenti_dict and st.session_state["spese"]:
+            # Estrae i partecipanti unici dalle spese se necessario
+            tutti_p = set()
+            for s in st.session_state["spese"]:
+                coinvolti = str(s.get("Coinvolti", "")).split(",")
+                for c_p in coinvolti:
+                    if c_p.strip():
+                        tutti_p.add(c_p.strip())
+                pag = str(s.get("Pagato da", "")).strip()
+                if pag and pag != "Cassa Comune":
+                    tutti_p.add(pag)
+            for p in tutti_p:
+                versamenti_dict[p] = 0.0
+
+        if versamenti_dict:
             st.session_state["versamenti"] = versamenti_dict
             st.session_state["partecipanti"] = list(versamenti_dict.keys())
-            
             st.sidebar.success("Backup ripristinato con successo!")
             st.rerun()
         else:
-            st.sidebar.error("Il file Excel non contiene i fogli corretti ('Spese' e 'Versamenti').")
+            st.sidebar.error("Impossibile trovare partecipanti validi nel file Excel caricato.")
+            
     except Exception as e:
-        st.sidebar.error("Errore durante la lettura del file di backup.")
+        st.sidebar.error(f"Errore durante la lettura del file: {e}")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -185,7 +205,7 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI E PULIZIA EMERGENZA ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Nessun partecipante trovato** (potrebbe essere dovuto a un file di backup vuoto o non valido).")
+    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale o carica un file Excel di backup valido.")
     if st.button("🔄 Ripristina configurazione pulita (Annulla blocco)"):
         st.session_state["partecipanti"] = []
         st.session_state["versamenti"] = {}
@@ -198,7 +218,7 @@ totale_versato = sum(st.session_state["versamenti"].values())
 totale_speso = sum(float(s.get("Importo", 0.0)) for s in st.session_state["spese"])
 cassa_rimanente = totale_versato - totale_speso
 
-# Mostra metriche principali della cassa
+# Mostra metriche principali della cassa con 2 decimali fissi
 col_m1, col_m2, col_m3 = st.columns(3)
 col_m1.metric("Cassa Totale Versata", f"{totale_versato:.2f} €")
 col_m2.metric("Spese Totali", f"{totale_speso:.2f} €")
@@ -214,7 +234,7 @@ st.subheader("📝 Registra Spesa")
 
 with st.form("form_spesa", clear_on_submit=True):
     descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
-    importo_spesa_str = st.text_input("Importo (€) (es. 25 o 12.50)", value="")
+    importo_spesa_str = st.text_input("Importo (€) (es. 25.00 o 12.50)", value="")
     
     modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
     
@@ -233,7 +253,7 @@ with st.form("form_spesa", clear_on_submit=True):
     
     if submitted:
         try:
-            importo_spesa = float(importo_spesa_str.replace(',', '.'))
+            importo_spesa = round(float(importo_spesa_str.replace(',', '.')), 2)
         except ValueError:
             importo_spesa = 0.0
 
@@ -290,11 +310,11 @@ for spesa in st.session_state["spese"]:
 st.write("### 💶 Situazione Contabile per Persona:")
 col_res1, col_res2 = st.columns(2)
 for i, p in enumerate(st.session_state["partecipanti"]):
-    versato_p = st.session_state["versamenti"].get(p, 0.0)
-    speso_p = quote_spese.get(p, 0.0)
-    anticipato_p = crediti_anticipi.get(p, 0.0)
+    versato_p = round(st.session_state["versamenti"].get(p, 0.0), 2)
+    speso_p = round(quote_spese.get(p, 0.0), 2)
+    anticipato_p = round(crediti_anticipi.get(p, 0.0), 2)
     
-    saldo_p = (versato_p + anticipato_p) - speso_p
+    saldo_p = round((versato_p + anticipato_p) - speso_p, 2)
     
     col = col_res1 if i % 2 == 0 else col_res2
     with col:
