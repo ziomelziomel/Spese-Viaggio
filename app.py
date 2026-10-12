@@ -24,7 +24,7 @@ if not st.session_state["authenticated"]:
 # --- APPLICAZIONE PRINCIPALE ---
 st.title("✈️ Gestione Cassa e Spese di Viaggio")
 
-# Inizializzazione delle strutture dati (Partenza pulita senza nomi di default)
+# Inizializzazione delle strutture dati con recupero sicuro
 if "partecipanti" not in st.session_state:
     st.session_state["partecipanti"] = []
 
@@ -122,20 +122,43 @@ if st.sidebar.button("Registra Versamento"):
 
 st.sidebar.divider()
 
-# 3. Backup Dati (Esportazione ed Importazione)
-st.sidebar.subheader("💾 Backup Dati (Excel/CSV)")
+# 3. Backup e Ripristino Dati (In formato Excel .xlsx)
+st.sidebar.subheader("💾 Backup & Ripristino Excel")
 
-# Esportazione in CSV dei dati correnti
 if st.session_state["spese"] or st.session_state["partecipanti"]:
-    # Prepariamo un piccolo riepilogo da scaricare
-    dati_export = pd.DataFrame(st.session_state["spese"])
-    csv_data = dati_export.to_csv(index=False).encode('utf-8')
+    # Creazione file Excel in memoria con più fogli (Spese e Versamenti)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_spese_exp = pd.DataFrame(st.session_state["spese"]) if st.session_state["spese"] else pd.DataFrame(columns=["Descrizione", "Importo", "Pagato da", "Coinvolti", "Num_Coinvolti"])
+        df_spese_exp.to_excel(writer, sheet_name='Spese', index=False)
+        
+        df_vers_exp = pd.DataFrame(list(st.session_state["versamenti"].items()), columns=["Partecipante", "Versato"])
+        df_vers_exp.to_excel(writer, sheet_name='Versamenti', index=False)
+    
+    excel_data = output.getvalue()
+    
     st.sidebar.download_button(
-        label="📥 Scarica Backup Spese",
-        data=csv_data,
-        file_name="backup_spese_viaggio.csv",
-        mime="text/csv"
+        label="📥 Scarica Backup Excel",
+        data=excel_data,
+        file_name="backup_spese_viaggio.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Ripristino da file Excel di backup
+uploaded_file = st.sidebar.file_uploader("📤 Ripristina da Backup Excel", type=["xlsx"])
+if uploaded_file is not None:
+    try:
+        df_spese_imp = pd.read_excel(uploaded_file, sheet_name='Spese')
+        df_vers_imp = pd.read_excel(uploaded_file, sheet_name='Versamenti')
+        
+        st.session_state["spese"] = df_spese_imp.to_dict(orient='records')
+        st.session_state["versamenti"] = dict(zip(df_vers_imp["Partecipante"], df_vers_imp["Versato"]))
+        st.session_state["partecipanti"] = list(st.session_state["versamenti"].keys())
+        
+        st.sidebar.success("Backup ripristinato con successo!")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error("Errore nel caricamento del file di backup.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -144,7 +167,7 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Benvenuti!** Non ci sono partecipanti configurati. Aggiungete i partecipanti (es. i vostri nomi) dalla barra laterale per iniziare.")
+    st.warning("⚠️ **Benvenuti!** Non ci sono partecipanti configurati. Aggiungete i partecipanti dalla barra laterale per iniziare, oppure caricate un file Excel di backup.")
     st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
@@ -237,7 +260,7 @@ for spesa in st.session_state["spese"]:
         n_coinvolti = max(len(lista_coinvolti), 1)
         
     quota_capite = totale / n_coinvolti
-    for p in lista_coin_volti if 'lista_coin_volti' in locals() else lista_coinvolti:
+    for p in lista_coinvolti:
         if p in quote_spese:
             quote_spese[p] += quota_capite
 
