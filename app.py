@@ -51,26 +51,29 @@ nuovo_partecipante = st.sidebar.text_input("Aggiungi partecipante", key="input_n
 
 if st.sidebar.button("Aggiungi"):
     valore = st.session_state["input_nuovo_partecipante"].strip()
-    if valore and valore not in st.session_state["partecipanti"]:
-        st.session_state["partecipanti"].append(valore)
-        st.session_state["versamenti"][valore] = 0.0
-        st.session_state["input_nuovo_partecipante"] = ""  # Pulisce il campo
-        st.sidebar.success(f"Aggiunto {valore}!")
-        st.rerun()
-    elif valore in st.session_state["partecipanti"]:
-        st.sidebar.warning("Il partecipante esiste già.")
-
-partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", [""] + st.session_state["partecipanti"])
-if st.sidebar.button("Rimuovi"):
-    if partecipante_da_rimuovere in st.session_state["partecipanti"]:
-        if len(st.session_state["partecipanti"]) <= 1:
-            st.sidebar.error("Non puoi rimuovere tutti i partecipanti! Deve essercene almeno uno.")
-        else:
-            st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
-            if partecipante_da_rimuovere in st.session_state["versamenti"]:
-                del st.session_state["versamenti"][partecipante_da_rimuovere]
-            st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+    if valore:
+        if valore not in st.session_state["partecipanti"]:
+            st.session_state["partecipanti"].append(valore)
+            if valore not in st.session_state["versamenti"]:
+                st.session_state["versamenti"][valore] = 0.0
+            st.session_state["input_nuovo_partecipante"] = ""  # Pulisce il campo
+            st.sidebar.success(f"Aggiunto {valore}!")
             st.rerun()
+        else:
+            st.sidebar.warning("Il partecipante esiste già.")
+    else:
+        st.sidebar.warning("Inserisci un nome valido.")
+
+# Selezione per la rimozione (gestita in modo sicuro anche se la lista è vuota)
+lista_rimozione = [""] + st.session_state["partecipanti"]
+partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", lista_rimozione)
+if st.sidebar.button("Rimuovi"):
+    if partecipante_da_rimuovere and partecipante_da_rimuovere in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
+        if partecipante_da_rimuovere in st.session_state["versamenti"]:
+            del st.session_state["versamenti"][partecipante_da_rimuovere]
+        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+        st.rerun()
 
 st.sidebar.divider()
 
@@ -78,9 +81,11 @@ st.sidebar.divider()
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
+partecipanti_validi = st.session_state["partecipanti"] if st.session_state["partecipanti"] else []
+
 persona_versamento = st.sidebar.selectbox(
     "Partecipante", 
-    [""] + st.session_state["partecipanti"], 
+    [""] + partecipanti_validi, 
     key=f"sel_vers_{c}"
 )
 importo_versamento = st.sidebar.number_input(
@@ -97,6 +102,8 @@ tipo_versamento = st.sidebar.radio(
 
 if st.sidebar.button("Registra Versamento"):
     if persona_versamento and persona_versamento != "" and importo_versamento > 0:
+        if persona_versamento not in st.session_state["versamenti"]:
+            st.session_state["versamenti"][persona_versamento] = 0.0
         st.session_state["versamenti"][persona_versamento] += importo_versamento
         st.session_state["extra_versamenti"].append({
             "Partecipante": persona_versamento,
@@ -116,7 +123,7 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ Non ci sono partecipanti configurati. Aggiungi almeno un partecipante dalla barra laterale.")
+    st.warning("⚠️ Non ci sono partecipanti configurati. Aggiungi almeno un partecipante dalla barra laterale per procedere.")
     st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
