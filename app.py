@@ -22,14 +22,16 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # --- APPLICAZIONE PRINCIPALE ---
-st.title("✈️ Gestione Cassa e Spese di Viaggio")
+st.title("✈️ Gestione Cassa e Spese di Viaggio (per Coppie)")
 
-# Inizializzazione sicura con dati di default per evitare blocchi
+# Inizializzazione con le 4 coppie fisse e 400€ a coppia
+COPPIE_FISSE = ["Andrea e Cinzia", "Melo e Laura", "Sandro e Fulvia", "Macio e Simona"]
+
 if "partecipanti" not in st.session_state or not st.session_state["partecipanti"]:
-    st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
+    st.session_state["partecipanti"] = list(COPPIE_FISSE)
 
 if "versamenti" not in st.session_state or not st.session_state["versamenti"]:
-    st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+    st.session_state["versamenti"] = {p: 400.0 for p in COPPIE_FISSE}
 
 if "spese" not in st.session_state:
     st.session_state["spese"] = []
@@ -43,36 +45,36 @@ if "reset_vers_counter" not in st.session_state:
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
-# 1. Gestione Partecipanti tramite Form
-st.sidebar.subheader("👥 Partecipanti")
+# 1. Gestione Coppie
+st.sidebar.subheader("👥 Coppie Partecipanti")
 
-with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
-    nuovo_partecipante = st.text_input("Nome nuovo partecipante")
-    btn_aggiungi = st.form_submit_button("Aggiungi")
+with st.sidebar.form("form_aggiungi_coppia", clear_on_submit=True):
+    nuova_coppia = st.text_input("Nome nuova coppia (es. Mario e Anna)")
+    btn_aggiungi = st.form_submit_button("Aggiungi Coppia")
     
     if btn_aggiungi:
-        valore = nuovo_partecipante.strip()
+        valore = nuova_coppia.strip()
         if valore:
             if valore not in st.session_state["partecipanti"]:
                 st.session_state["partecipanti"].append(valore)
                 if valore not in st.session_state["versamenti"]:
                     st.session_state["versamenti"][valore] = 0.0
-                st.success(f"Aggiunto {valore}!")
+                st.success(f"Aggiunta coppia {valore}!")
                 st.rerun()
             else:
-                st.warning("Il partecipante esiste già.")
+                st.warning("Questa coppia esiste già.")
         else:
             st.warning("Inserisci un nome valido.")
 
-# Rimozione partecipante
+# Rimozione coppia
 lista_rimozione = [""] + st.session_state["partecipanti"]
-partecipante_da_rimuovere = st.sidebar.selectbox("Rimuovi partecipante", lista_rimozione)
-if st.sidebar.button("Rimuovi"):
-    if partecipante_da_rimuovere and partecipante_da_rimuovere in st.session_state["partecipanti"]:
-        st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
-        if partecipante_da_rimuovere in st.session_state["versamenti"]:
-            del st.session_state["versamenti"][partecipante_da_rimuovere]
-        st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
+coppia_da_rimuovere = st.sidebar.selectbox("Rimuovi coppia", lista_rimozione)
+if st.sidebar.button("Rimuovi Coppia"):
+    if coppia_da_rimuovere and coppia_da_rimuovere in st.session_state["partecipanti"]:
+        st.session_state["partecipanti"].remove(coppia_da_rimuovere)
+        if coppia_da_rimuovere in st.session_state["versamenti"]:
+            del st.session_state["versamenti"][coppia_da_rimuovere]
+        st.sidebar.success(f"Rimossa coppia {coppia_da_rimuovere}!")
         st.rerun()
 
 st.sidebar.divider()
@@ -81,15 +83,15 @@ st.sidebar.divider()
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
-partecipanti_validi = st.session_state["partecipanti"] if st.session_state["partecipanti"] else []
+coppie_valide = st.session_state["partecipanti"] if st.session_state["partecipanti"] else []
 
 persona_versamento = st.sidebar.selectbox(
-    "Partecipante", 
-    [""] + partecipanti_validi, 
+    "Coppia", 
+    [""] + coppie_valide, 
     key=f"sel_vers_{c}"
 )
 importo_versamento_str = st.sidebar.text_input(
-    "Importo versato (€) (es. 50.00 o 12.50)", 
+    "Importo versato (€) (es. 50.00 o 100.00)", 
     value="", 
     key=f"imp_vers_{c}"
 )
@@ -118,7 +120,7 @@ if st.sidebar.button("Registra Versamento"):
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
     else:
-        st.sidebar.warning("Seleziona un partecipante valido e inserisci un importo maggiore di zero.")
+        st.sidebar.warning("Seleziona una coppia valida e inserisci un importo maggiore di zero.")
 
 st.sidebar.divider()
 
@@ -137,7 +139,7 @@ if st.sidebar.button("🔄 Ripristina"):
     if codice_da_ripristinare.strip():
         try:
             dati_caricati = json.loads(codice_da_ripristinare.strip())
-            st.session_state["partecipanti"] = dati_caricati.get("partecipanti", ["Mario", "Anna", "Luca", "Sara"])
+            st.session_state["partecipanti"] = dati_caricati.get("partecipanti", list(COPPIE_FISSE))
             st.session_state["versamenti"] = dati_caricati.get("versamenti", {})
             st.session_state["spese"] = dati_caricati.get("spese", [])
             st.sidebar.success("Ripristinato!")
@@ -172,18 +174,18 @@ with st.form("form_spesa", clear_on_submit=True):
     descrizione = st.text_input("Descrizione spesa (es. Cena, Benzina, Biglietti museo...)")
     importo_spesa_str = st.text_input("Importo (€) (es. 25.00 o 12.50)", value="")
     
-    modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da un partecipante"])
+    modalita_pagamento = st.radio("Chi ha pagato?", ["Cassa Comune", "Anticipato da una coppia"])
     
     pagato_da = "Cassa Comune"
-    if modalita_pagamento == "Anticipato da un partecipante":
-        pagato_da = st.selectbox("Chi ha anticipato i soldi?", st.session_state["partecipanti"])
+    if modalita_pagamento == "Anticipato da una coppia":
+        pagato_da = st.selectbox("Quale coppia ha anticipato i soldi?", st.session_state["partecipanti"])
     
-    st.write("Seleziona chi partecipa a questa spesa:")
-    partecipanti_coinvolti = {}
-    cols = st.columns(min(len(st.session_state["partecipanti"]), 4))
+    st.write("Seleziona quali coppie partecipano a questa spesa:")
+    coppie_coinvolte = {}
+    cols = st.columns(min(len(st.session_state["partecipanti"]), 2))
     for i, p in enumerate(st.session_state["partecipanti"]):
         with cols[i % len(cols)]:
-            partecipanti_coinvolti[p] = st.checkbox(p, value=True, key=f"cb_{p}")
+            coppie_coinvolte[p] = st.checkbox(p, value=True, key=f"cb_{p}")
             
     submitted = st.form_submit_button("Registra Spesa")
     
@@ -193,13 +195,13 @@ with st.form("form_spesa", clear_on_submit=True):
         except ValueError:
             importo_spesa = 0.0
 
-        coinvolti_list = [p for p, attivo in partecipanti_coinvolti.items() if attivo]
+        coinvolti_list = [p for p, attivo in coppie_coinvolte.items() if attivo]
         if not descrizione:
             st.warning("Inserisci una descrizione per la spesa.")
         elif importo_spesa <= 0:
             st.warning("L'importo deve essere maggiore di zero.")
         elif not coinvolti_list:
-            st.warning("Seleziona almeno un partecipante per questa spesa.")
+            st.warning("Seleziona almeno una coppia per questa spesa.")
         else:
             st.session_state["spese"].append({
                 "Descrizione": descrizione,
@@ -213,7 +215,7 @@ with st.form("form_spesa", clear_on_submit=True):
 
 # --- SEZIONE: STORICO SPESE E BILANCI ---
 st.divider()
-st.subheader("📊 Riepilogo Movimenti e Saldi Individuali")
+st.subheader("📊 Riepilogo Movimenti e Saldi per Coppia")
 
 if len(st.session_state["spese"]) > 0:
     st.write("### Cronologia Spese")
@@ -242,7 +244,7 @@ for spesa in st.session_state["spese"]:
         if p in quote_spese:
             quote_spese[p] += quota_capite
 
-st.write("### 💶 Situazione Contabile per Persona:")
+st.write("### 💶 Situazione Contabile per Coppia:")
 col_res1, col_res2 = st.columns(2)
 for i, p in enumerate(st.session_state["partecipanti"]):
     versato_p = round(st.session_state["versamenti"].get(p, 0.0), 2)
@@ -253,7 +255,7 @@ for i, p in enumerate(st.session_state["partecipanti"]):
     
     col = col_res1 if i % 2 == 0 else col_res2
     with col:
-        st.markdown(f"**👤 {p}**")
+        st.markdown(f"** couple 👫 {p}**")
         st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €\nAnticipi tasca:  {anticipato_p:.2f} €")
         st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
         st.markdown("---")
@@ -265,8 +267,8 @@ with col_r1:
         st.rerun()
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
-        st.session_state["partecipanti"] = ["Mario", "Anna", "Luca", "Sara"]
-        st.session_state["versamenti"] = {p: 100.0 for p in st.session_state["partecipanti"]}
+        st.session_state["partecipanti"] = list(COPPIE_FISSE)
+        st.session_state["versamenti"] = {p: 400.0 for p in COPPIE_FISSE}
         st.session_state["spese"] = []
         st.session_state["extra_versamenti"] = []
         st.session_state["reset_vers_counter"] += 1
