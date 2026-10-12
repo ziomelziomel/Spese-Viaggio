@@ -1,9 +1,120 @@
 import streamlit as st
 import pandas as pd
 import io
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from google.oauth2.credentials import Credentials
 
 # Configurazione della pagina
 st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
+
+# Nome del file di salvataggio automatico su Google Drive
+DRIVE_FILENAME = "spese_viaggio_auto_backup.xlsx"
+
+# --- FUNZIONI DI SINCRONIZZAZIONE AUTOMATICA CON GOOGLE DRIVE ---
+def get_drive_service():
+    """Ottiene il servizio Google Drive usando le credenziali attive della sessione Streamlit"""
+    try:
+        # Streamlit gestisce le credenziali OAuth dell'utente connesso
+        if "google_credentials" in st.session_state:
+            creds = Credentials(**st.session_state["google_credentials"])
+            return build('drive', 'v3', credentials=creds)
+    except Exception:
+        pass
+    return None
+
+def carica_dati_da_drive():
+    """Scarica i dati in automatico da Google Drive se il file esiste"""
+    try:
+        service = get_drive_service()
+        if not service:
+            return False
+        
+        # Cerca il file su Drive
+        results = service.files().list(
+            q=f"name='{DRIVE_FILENAME}' and trashed=false",
+            spaces='drive',
+            fields='files(id, name)'
+        ).execute()
+        files = results.get('files', [])
+        
+        if files:
+            file_id = files[0]['id']
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            
+            fh.seek(0)
+            xl = pd.ExcelFile(fh)
+            
+            # Legge Spese
+            if 'Spese' in xl.sheet_names:
+                df_spese = xl.parse('Spese').fillna("")
+                st.session_state["spese"] = df_spese.to_dict(orient='records') if not df_spese.empty else []
+            
+            # Legge Versamenti
+            versamenti_dict = {}
+            if 'Versamenti' in xl.sheet_names:
+                df_vers = xl.parse('Versamenti').fillna("")
+                for _, row in df_vers.iterrows():
+                    cols = list(row.index)
+                    if len(cols) >= 2:
+                        p = str(row.iloc[0]).strip()
+                        if p and p.lower() != 'nan':
+                            try:
+                                v = float(str(row.iloc[1]).replace(',', '.'))
+                            except:
+                                v = 0.0
+                            versamenti_dict[p] = round(v, 2)
+            
+            if versamenti_dict:
+                st.session_state["versamenti"] = versamenti_dict
+                st.session_state["partecipanti"] = list(versamenti_dict.keys())
+                return True
+    except Exception:
+        pass
+    return False
+
+def salva_dati_su_drive():
+    """Salva automaticamente i dati correnti su Google Drive"""
+    try:
+        service = get_drive_service()
+        if not service:
+            return
+        
+        # Crea il file Excel in memoria
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_spese_exp = pd.DataFrame(st.session_state["spese"]) if st.session_state["spese"] else pd.DataFrame(columns=["Descrizione", "Importo", "Pagato da", "Coinvolti", "Num_Coinvolti"])
+            df_spese_exp.to_excel(writer, sheet_name='Spese', index=False)
+            
+            df_vers_exp = pd.DataFrame(list(st.session_state["versamenti"].items()), columns=["Partecipante", "Versato"])
+            df_vers_exp.to_excel(writer, sheet_name='Versamenti', index=False)
+        
+        excel_data = output.getvalue()
+        media = MediaIoBaseUpload(io.BytesIO(excel_data), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+        
+        # Cerca se il file esiste già su Drive
+        results = service.files().list(
+            q=f"name='{DRIVE_FILENAME}' and trashed=false",
+            spaces='drive',
+            fields='files(id, name)'
+        ).execute()
+        files = results.get('files', [])
+        
+        if files:
+            # Aggiorna il file esistente
+            file_id = files[0]['id']
+            service.files().update(fileId=file_id, media_body=media).execute()
+        else:
+            # Crea un nuovo file
+            file_metadata = {'name': DRIVE_FILENAME}
+            service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    except Exception:
+        pass
 
 # --- GESTIONE AUTENTICAZIONE ---
 if "authenticated" not in st.session_state:
@@ -16,6 +127,8 @@ if not st.session_state["authenticated"]:
     if st.button("Accedi"):
         if password == "viaggio2026":
             st.session_state["authenticated"] = True
+            # Prova a caricare i dati automatici da Drive subito dopo il login
+            carica_dati_da_drive()
             st.rerun()
         else:
             st.error("Password errata. Riprova.")
@@ -40,6 +153,12 @@ if "extra_versamenti" not in st.session_state:
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
 
+# Al primo avvio autenticato, se i dati sono vuoti prova a recuperarli da Drive in automatico
+if not st.session_state["partecipanti"] and "drive_checked" not in st.session_state:
+    st.session_state["drive_checked"] = True
+    if carica_dati_da_drive():
+        st.rerun()
+
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
 
@@ -57,6 +176,7 @@ with st.sidebar.form("form_aggiungi_partecipante", clear_on_submit=True):
                 st.session_state["partecipanti"].append(valore)
                 if valore not in st.session_state["versamenti"]:
                     st.session_state["versamenti"][valore] = 0.0
+                salva_dati_su_drive()  # Salvataggio automatico
                 st.success(f"Aggiunto {valore}!")
                 st.rerun()
             else:
@@ -72,12 +192,13 @@ if st.sidebar.button("Rimuovi"):
         st.session_state["partecipanti"].remove(partecipante_da_rimuovere)
         if partecipante_da_rimuovere in st.session_state["versamenti"]:
             del st.session_state["versamenti"][partecipante_da_rimuovere]
+        salva_dati_su_drive()  # Salvataggio automatico
         st.sidebar.success(f"Rimosso {partecipante_da_rimuovere}!")
         st.rerun()
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa (SEMPRE VISIBILE)
+# 2. Gestione Versamenti in Cassa
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
@@ -114,6 +235,7 @@ if st.sidebar.button("Registra Versamento"):
             "Importo": round(importo_versamento, 2),
             "Tipo": tipo_versamento
         })
+        salva_dati_su_drive()  # Salvataggio automatico
         st.sidebar.success(f"Registrati {importo_versamento:.2f}€ per {persona_versamento}!")
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
@@ -122,76 +244,13 @@ if st.sidebar.button("Registra Versamento"):
 
 st.sidebar.divider()
 
-# 3. Backup e Ripristino Dati (In formato Excel .xlsx)
-st.sidebar.subheader("💾 Backup & Ripristino Excel")
-
-if st.session_state["spese"] or st.session_state["partecipanti"]:
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_spese_exp = pd.DataFrame(st.session_state["spese"]) if st.session_state["spese"] else pd.DataFrame(columns=["Descrizione", "Importo", "Pagato da", "Coinvolti", "Num_Coinvolti"])
-        df_spese_exp.to_excel(writer, sheet_name='Spese', index=False)
-        
-        df_vers_exp = pd.DataFrame(list(st.session_state["versamenti"].items()), columns=["Partecipante", "Versato"])
-        df_vers_exp.to_excel(writer, sheet_name='Versamenti', index=False)
-    
-    excel_data = output.getvalue()
-    
-    st.sidebar.download_button(
-        label="📥 Scarica Backup Excel",
-        data=excel_data,
-        file_name="backup_spese_viaggio.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-# Ripristino da file Excel di backup
-uploaded_file = st.sidebar.file_uploader("📤 Ripristina da Backup Excel", type=["xlsx"])
-if uploaded_file is not None:
-    try:
-        xl = pd.ExcelFile(uploaded_file)
-        
-        if 'Spese' in xl.sheet_names:
-            df_spese_imp = xl.parse('Spese').fillna("")
-            st.session_state["spese"] = df_spese_imp.to_dict(orient='records') if not df_spese_imp.empty else []
-        else:
-            st.session_state["spese"] = []
-
-        versamenti_dict = {}
-        if 'Versamenti' in xl.sheet_names:
-            df_vers_imp = xl.parse('Versamenti').fillna("")
-            for _, row in df_vers_imp.iterrows():
-                cols = list(row.index)
-                if len(cols) >= 2:
-                    p = str(row.iloc[0]).strip()
-                    if p and p.lower() != 'nan':
-                        try:
-                            v = float(str(row.iloc[1]).replace(',', '.'))
-                        except:
-                            v = 0.0
-                        versamenti_dict[p] = round(v, 2)
-        
-        if not versamenti_dict and st.session_state["spese"]:
-            tutti_p = set()
-            for s in st.session_state["spese"]:
-                coinvolti = str(s.get("Coinvolti", "")).split(",")
-                for c_p in coinvolti:
-                    if c_p.strip():
-                        tutti_p.add(c_p.strip())
-                pag = str(s.get("Pagato da", "")).strip()
-                if pag and pag != "Cassa Comune":
-                    tutti_p.add(pag)
-            for p in tutti_p:
-                versamenti_dict[p] = 0.0
-
-        if versamenti_dict:
-            st.session_state["versamenti"] = versamenti_dict
-            st.session_state["partecipanti"] = list(versamenti_dict.keys())
-            st.sidebar.success("Backup ripristinato con successo!")
-            st.rerun()
-        else:
-            st.sidebar.error("Impossibile trovare partecipanti validi nel file Excel caricato.")
-            
-    except Exception as e:
-        st.sidebar.error(f"Errore durante la lettura del file: {e}")
+# Sincronizzazione manuale di emergenza (opzionale)
+if st.sidebar.button("🔄 Sincronizza con Google Drive"):
+    if carica_dati_da_drive():
+        st.sidebar.success("Dati sincronizzati!")
+        st.rerun()
+    else:
+        st.sidebar.info("Nessun backup trovato su Drive o sincronizzazione non attiva.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -200,12 +259,10 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI E PULIZIA EMERGENZA ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale o carica un file Excel di backup.")
-    if st.button("🔄 Ripristina configurazione pulita (Annulla blocco)"):
-        st.session_state["partecipanti"] = []
-        st.session_state["versamenti"] = {}
-        st.session_state["spese"] = []
-        st.rerun()
+    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale per iniziare.")
+    if st.button("🔄 Cerca dati su Google Drive"):
+        if carica_dati_da_drive():
+            st.rerun()
     st.stop()
 
 # --- CALCOLI FINANZIARI GENERALI ---
@@ -267,6 +324,7 @@ with st.form("form_spesa", clear_on_submit=True):
                 "Coinvolti": ", ".join(coinvolti_list),
                 "Num_Coinvolti": len(coinvolti_list)
             })
+            salva_dati_su_drive()  # Salvataggio automatico
             st.success(f"Spesa '{descrizione}' registrata con successo!")
             st.rerun()
 
@@ -322,6 +380,7 @@ col_r1, col_r2 = st.columns(2)
 with col_r1:
     if st.button("🔄 Pulisci memoria spese"):
         st.session_state["spese"] = []
+        salva_dati_su_drive()
         st.rerun()
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
@@ -330,4 +389,5 @@ with col_r2:
         st.session_state["spese"] = []
         st.session_state["extra_versamenti"] = []
         st.session_state["reset_vers_counter"] += 1
+        salva_dati_su_drive()
         st.rerun()
