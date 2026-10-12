@@ -77,7 +77,7 @@ if st.sidebar.button("Rimuovi"):
 
 st.sidebar.divider()
 
-# 2. Gestione Versamenti in Cassa
+# 2. Gestione Versamenti in Cassa (SEMPRE VISIBILE)
 st.sidebar.subheader("💰 Versamenti Cassa")
 c = st.session_state["reset_vers_counter"]
 
@@ -88,7 +88,7 @@ persona_versamento = st.sidebar.selectbox(
     [""] + partecipanti_validi, 
     key=f"sel_vers_{c}"
 )
-importo_versamento_str = st.text_input(
+importo_versamento_str = st.sidebar.text_input(
     "Importo versato (€) (es. 50.00 o 12.50)", 
     value="", 
     key=f"imp_vers_{c}"
@@ -143,25 +143,22 @@ if st.session_state["spese"] or st.session_state["partecipanti"]:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# Ripristino ultra-robusto da file Excel di backup
+# Ripristino da file Excel di backup
 uploaded_file = st.sidebar.file_uploader("📤 Ripristina da Backup Excel", type=["xlsx"])
 if uploaded_file is not None:
     try:
         xl = pd.ExcelFile(uploaded_file)
         
-        # Legge il foglio Spese se esiste
         if 'Spese' in xl.sheet_names:
             df_spese_imp = xl.parse('Spese').fillna("")
             st.session_state["spese"] = df_spese_imp.to_dict(orient='records') if not df_spese_imp.empty else []
         else:
             st.session_state["spese"] = []
 
-        # Legge il foglio Versamenti se esiste
         versamenti_dict = {}
         if 'Versamenti' in xl.sheet_names:
             df_vers_imp = xl.parse('Versamenti').fillna("")
             for _, row in df_vers_imp.iterrows():
-                # Prende la prima colonna come nome e la seconda come importo indipendentemente dai nomi delle intestazioni
                 cols = list(row.index)
                 if len(cols) >= 2:
                     p = str(row.iloc[0]).strip()
@@ -172,9 +169,7 @@ if uploaded_file is not None:
                             v = 0.0
                         versamenti_dict[p] = round(v, 2)
         
-        # Se il foglio Versamenti non c'è ma ci sono partecipanti registrati nelle spese
         if not versamenti_dict and st.session_state["spese"]:
-            # Estrae i partecipanti unici dalle spese se necessario
             tutti_p = set()
             for s in st.session_state["spese"]:
                 coinvolti = str(s.get("Coinvolti", "")).split(",")
@@ -205,7 +200,7 @@ if st.sidebar.button("🚪 Esci (Logout)"):
 
 # --- CONTROLLI PRELIMINARI E PULIZIA EMERGENZA ---
 if not st.session_state["partecipanti"]:
-    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale o carica un file Excel di backup valido.")
+    st.warning("⚠️ **Nessun partecipante trovato.** Aggiungi i partecipanti dalla barra laterale o carica un file Excel di backup.")
     if st.button("🔄 Ripristina configurazione pulita (Annulla blocco)"):
         st.session_state["partecipanti"] = []
         st.session_state["versamenti"] = {}
