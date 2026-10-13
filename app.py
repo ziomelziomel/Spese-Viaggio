@@ -240,6 +240,27 @@ if len(st.session_state["spese"]) > 0:
     df_spese = pd.DataFrame(spese_formattate)
     st.dataframe(df_spese, use_container_width=True, hide_index=True)
 
+    # --- MODIFICA / ELIMINAZIONE SPESA ERRATA ---
+    with st.expander("✏️ Modifica o Elimina una Spesa Registrata"):
+        opzioni_spese = [f"{i}. {s['Descrizione']} - {float(s['Importo']):.2f} € (Pagato da: {s['Pagato da']})" 
+                           for i, s in enumerate(st.session_state["spese"])]
+        
+        spesa_selezionata = st.selectbox("Seleziona la spesa da rimuovere o correggere:", [""] + opzioni_spese)
+        
+        if st.button("🗑️ Elimina Spesa Selezionata"):
+            if spesa_selezionata:
+                # Estrae l'indice numerico dall'opzione selezionata
+                indice_str = spesa_selezionata.split(".")[0]
+                try:
+                    indice_da_rimuovere = int(indice_str)
+                    spesa_eliminata = st.session_state["spese"].pop(indice_da_rimuovere)
+                    st.success(f"Spesa '{spesa_eliminata['Descrizione']}' eliminata con successo! Ora puoi reinserirla corretta.")
+                    st.rerun()
+                except Exception:
+                    st.error("Errore durante l'eliminazione della spesa.")
+            else:
+                st.warning("Seleziona prima una spesa dalla lista.")
+
 # Calcolo dei saldi
 for spesa in st.session_state["spese"]:
     totale = float(spesa.get("Importo", 0.0))
