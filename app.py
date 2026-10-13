@@ -240,26 +240,73 @@ if len(st.session_state["spese"]) > 0:
     df_spese = pd.DataFrame(spese_formattate)
     st.dataframe(df_spese, use_container_width=True, hide_index=True)
 
-    # --- MODIFICA / ELIMINAZIONE SPESA ERRATA ---
+    # --- MODIFICA O ELIMINA SPESA ESISTENTE ---
     with st.expander("✏️ Modifica o Elimina una Spesa Registrata"):
         opzioni_spese = [f"{i}. {s['Descrizione']} - {float(s['Importo']):.2f} € (Pagato da: {s['Pagato da']})" 
                            for i, s in enumerate(st.session_state["spese"])]
         
-        spesa_selezionata = st.selectbox("Seleziona la spesa da rimuovere o correggere:", [""] + opzioni_spese)
+        spesa_scelta = st.selectbox("Seleziona la spesa da modificare o eliminare:", [""] + opzioni_spese, key="sel_mod_spesa")
         
-        if st.button("🗑️ Elimina Spesa Selezionata"):
-            if spesa_selezionata:
-                # Estrae l'indice numerico dall'opzione selezionata
-                indice_str = spesa_selezionata.split(".")[0]
-                try:
-                    indice_da_rimuovere = int(indice_str)
-                    spesa_eliminata = st.session_state["spese"].pop(indice_da_rimuovere)
-                    st.success(f"Spesa '{spesa_eliminata['Descrizione']}' eliminata con successo! Ora puoi reinserirla corretta.")
+        if spesa_scelta:
+            idx_mod = int(spesa_scelta.split(".")[0])
+            spesa_corrente = st.session_state["spese"][idx_mod]
+            
+            with st.form("form_modifica_spesa"):
+                st.write(f"**Modifica spesa #{idx_mod}:**")
+                nuova_desc = st.text_input("Nuova Descrizione", value=spesa_corrente["Descrizione"])
+                nuovo_imp_str = st.text_input("Nuovo Importo (€)", value=str(spesa_corrente["Importo"]))
+                
+                opzioni_paganti = ["Cassa Comune"] + st.session_state["partecipanti"]
+                pagatore_corrente = spesa_corrente["Pagato da"]
+                idx_pagatore = opzioni_paganti.index(pagatore_corrente) if pagatore_corrente in opzioni_paganti else 0
+                
+                nuovo_pagato_da = st.selectbox("Chi ha pagato?", opzioni_paganti, index=idx_pagatore)
+                
+                st.write("Coppie partecipanti:")
+                coinvolti_attuali = [p.strip() for p in spesa_corrente["Coppie Coinvolte"].split(",")]
+                
+                nuovi_coinvolti_dict = {}
+                cols_m = st.columns(2)
+                for i, p in enumerate(st.session_state["partecipanti"]):
+                    is_checked = p in coinvolti_attuali
+                    with cols_m[i % 2]:
+                        nuovi_coinvolti_dict[p] = st.checkbox(p, value=is_checked, key=f"mod_cb_{idx_mod}_{p}")
+                
+                col_sub1, col_sub2 = st.columns(2)
+                with col_sub1:
+                    btn_salva_mod = st.form_submit_button("💾 Salva Modifiche")
+                with col_sub2:
+                    btn_elimina_mod = st.form_submit_button("🗑️ Elimina Questa Spesa")
+                
+                if btn_salva_mod:
+                    try:
+                        imp_val = round(float(nuovo_imp_str.replace(',', '.')), 2)
+                    except ValueError:
+                        imp_val = 0.0
+                    
+                    lista_c_nuova = [p for p, attivo in nuovi_coinvolti_dict.items() if attivo]
+                    
+                    if not nuova_desc:
+                        st.warning("Inserisci una descrizione.")
+                    elif imp_val <= 0:
+                        st.warning("L'importo deve essere maggiore di zero.")
+                    elif not lista_c_nuova:
+                        st.warning("Seleziona almeno una coppia.")
+                    else:
+                        st.session_state["spese"][idx_mod] = {
+                            "Descrizione": nuova_desc,
+                            "Importo": imp_val,
+                            "Pagato da": nuovo_pagato_da,
+                            "Coppie Coinvolte": ", ".join(lista_c_nuova),
+                            "Nr Coppie": len(lista_c_nuova)
+                        }
+                        st.success("Spesa modificata con successo!")
+                        st.rerun()
+                
+                if btn_elimina_mod:
+                    spesa_rimossa = st.session_state["spese"].pop(idx_mod)
+                    st.success(f"Spesa '{spesa_rimossa['Descrizione']}' eliminata!")
                     st.rerun()
-                except Exception:
-                    st.error("Errore durante l'eliminazione della spesa.")
-            else:
-                st.warning("Seleziona prima una spesa dalla lista.")
 
 # Calcolo dei saldi
 for spesa in st.session_state["spese"]:
