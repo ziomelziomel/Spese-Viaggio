@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import urllib.parse
 
 # Configurazione della pagina
 st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
@@ -142,10 +143,12 @@ if st.sidebar.button("🔄 Ripristina"):
             st.session_state["partecipanti"] = dati_caricati.get("partecipanti", list(COPPIE_FISSE))
             st.session_state["versamenti"] = dati_caricati.get("versamenti", {})
             st.session_state["spese"] = dati_caricati.get("spese", [])
-            st.sidebar.success("Ripristinato!")
+            st.sidebar.success("Ripristinato con successo!")
             st.rerun()
-        except:
-            st.sidebar.error("Codice non valido.")
+        except Exception:
+            st.sidebar.error("Codice di ripristino errato o incompleto.")
+    else:
+        st.sidebar.warning("Incolla prima un codice di backup valido.")
 
 st.sidebar.divider()
 if st.sidebar.button("🚪 Esci (Logout)"):
@@ -207,8 +210,8 @@ with st.form("form_spesa", clear_on_submit=True):
                 "Descrizione": descrizione,
                 "Importo": importo_spesa,
                 "Pagato da": pagato_da,
-                "Coinvolti": ", ".join(coinvolti_list),
-                "Num_Coinvolti": len(coinvolti_list)
+                "Coppie Coinvolte": ", ".join(coinvolti_list),
+                "Nr Coppie": len(coinvolti_list)
             })
             st.success(f"Spesa '{descrizione}' registrata con successo!")
             st.rerun()
@@ -217,23 +220,38 @@ with st.form("form_spesa", clear_on_submit=True):
 st.divider()
 st.subheader("📊 Riepilogo Movimenti e Saldi per Coppia")
 
-if len(st.session_state["spese"]) > 0:
-    st.write("### Cronologia Spese")
-    df_spese = pd.DataFrame(st.session_state["spese"])
-    st.dataframe(df_spese, use_container_width=True)
-
 quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
 crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
 
+if len(st.session_state["spese"]) > 0:
+    st.write("### Cronologia Spese")
+    
+    # Preparazione tabella pulita senza indice numerico e con importi a 2 decimali
+    spese_formattate = []
+    for s in st.session_state["spese"]:
+        imp = float(s.get("Importo", 0.0))
+        spese_formattate.append({
+            "Descrizione": s.get("Descrizione", ""),
+            "Importo (€)": f"{imp:.2f} €",
+            "Pagato da": s.get("Pagato da", "Cassa Comune"),
+            "Coppie Coinvolte": s.get("Coppie Coinvolte", s.get("Coinvolti", "")),
+            "Nr Coppie": s.get("Nr Coppie", s.get("Num_Coinvolti", 1))
+        })
+    
+    df_spese = pd.DataFrame(spese_formattate)
+    # Mostra la tabella senza indice progressivo
+    st.dataframe(df_spese, use_container_width=True, hide_index=True)
+
+# Calcolo dei saldi
 for spesa in st.session_state["spese"]:
     totale = float(spesa.get("Importo", 0.0))
     pagatore = spesa.get("Pagato da", "Cassa Comune")
-    n_coinvolti = int(spesa.get("Num_Coinvolti", 1))
+    n_coinvolti = int(spesa.get("Nr Coppie", spesa.get("Num_Coinvolti", 1)))
     
     if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
         crediti_anticipi[pagatore] += totale
         
-    coinvolti_str = str(spesa.get("Coinvolti", ""))
+    coinvolti_str = str(spesa.get("Coppie Coinvolte", spesa.get("Coinvolti", "")))
     lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()]
     
     if n_coinvolti == 0:
@@ -246,20 +264,37 @@ for spesa in st.session_state["spese"]:
 
 st.write("### 💶 Situazione Contabile per Coppia:")
 col_res1, col_res2 = st.columns(2)
+
+testo_whatsapp = "✈️ *RIEPILOGO CASSA VIAGGIO*\n\n"
+testo_whatsapp += f"💰 *Cassa Totale Versata:* {totale_versato:.2f} €\n"
+testo_whatsapp += f"💸 *Spese Totali:* {totale_speso:.2f} €\n"
+testo_whatsapp += f"🏦 *Disponibilità Residua:* {cassa_rimanente:.2f} €\n\n"
+testo_whatsapp += "📊 *SALDI PER COPPIA:*\n"
+
 for i, p in enumerate(st.session_state["partecipanti"]):
     versato_p = round(st.session_state["versamenti"].get(p, 0.0), 2)
     speso_p = round(quote_spese.get(p, 0.0), 2)
     anticipato_p = round(crediti_anticipi.get(p, 0.0), 2)
-    
     saldo_p = round((versato_p + anticipato_p) - speso_p, 2)
+    
+    testo_whatsapp += f"\n👫 *{p}*\n"
+    testo_whatsapp += f"• Versato: {versato_p:.2f} €\n"
+    testo_whatsapp += f"• Speso: {speso_p:.2f} €\n"
+    testo_whatsapp += f"• Saldo: {saldo_p:.2f} €\n"
     
     col = col_res1 if i % 2 == 0 else col_res2
     with col:
-        st.markdown(f"** couple 👫 {p}**")
+        st.markdown(f"**Coppia 👫 {p}**")
         st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €\nAnticipi tasca:  {anticipato_p:.2f} €")
         st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
         st.markdown("---")
 
+# --- SEZIONE INVIO WHATSAPP ---
+st.subheader("📲 Condividi su WhatsApp")
+url_wa = "https://wa.me/?text=" + urllib.parse.quote(testo_whatsapp)
+st.markdown(f'[![Invia su WhatsApp](https://img.shields.io/badge/Invia_Riepilogo_su-WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)]({url_wa})')
+
+st.divider()
 col_r1, col_r2 = st.columns(2)
 with col_r1:
     if st.button("🔄 Pulisci memoria spese"):
