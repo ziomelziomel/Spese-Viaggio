@@ -229,12 +229,16 @@ if len(st.session_state["spese"]) > 0:
     spese_formattate = []
     for s in st.session_state["spese"]:
         imp = float(s.get("Importo", 0.0))
+        # Gestione sicura dei campi per evitare qualsiasi KeyError con vecchi dati
+        c_coinvolte = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
+        nr_c = s.get("Nr Coppie", s.get("Num_Coinvolti", len(str(c_coinvolte).split(",")) if c_coinvolte else 1))
+        
         spese_formattate.append({
             "Descrizione": s.get("Descrizione", ""),
             "Importo (€)": f"{imp:.2f} €",
             "Pagato da": s.get("Pagato da", "Cassa Comune"),
-            "Coppie Coinvolte": s.get("Coppie Coinvolte", s.get("Coinvolti", "")),
-            "Nr Coppie": s.get("Nr Coppie", s.get("Num_Coinvolti", 1))
+            "Coppie Coinvolte": c_coinvolte,
+            "Nr Coppie": nr_c
         })
     
     df_spese = pd.DataFrame(spese_formattate)
@@ -253,17 +257,18 @@ if len(st.session_state["spese"]) > 0:
             
             with st.form("form_modifica_spesa"):
                 st.write(f"**Modifica spesa #{idx_mod}:**")
-                nuova_desc = st.text_input("Nuova Descrizione", value=spesa_corrente["Descrizione"])
-                nuovo_imp_str = st.text_input("Nuovo Importo (€)", value=str(spesa_corrente["Importo"]))
+                nuova_desc = st.text_input("Nuova Descrizione", value=spesa_corrente.get("Descrizione", ""))
+                nuovo_imp_str = st.text_input("Nuovo Importo (€)", value=str(spesa_corrente.get("Importo", 0.0)))
                 
                 opzioni_paganti = ["Cassa Comune"] + st.session_state["partecipanti"]
-                pagatore_corrente = spesa_corrente["Pagato da"]
+                pagatore_corrente = spesa_corrente.get("Pagato da", "Cassa Comune")
                 idx_pagatore = opzioni_paganti.index(pagatore_corrente) if pagatore_corrente in opzioni_paganti else 0
                 
                 nuovo_pagato_da = st.selectbox("Chi ha pagato?", opzioni_paganti, index=idx_pagatore)
                 
                 st.write("Coppie partecipanti:")
-                coinvolti_attuali = [p.strip() for p in spesa_corrente["Coppie Coinvolte"].split(",")]
+                stringa_coinvolti = spesa_corrente.get("Coppie Coinvolte", spesa_corrente.get("Coinvolti", ""))
+                coinvolti_attuali = [p.strip() for p in stringa_coinvolti.split(",") if p.strip()]
                 
                 nuovi_coinvolti_dict = {}
                 cols_m = st.columns(2)
@@ -305,23 +310,23 @@ if len(st.session_state["spese"]) > 0:
                 
                 if btn_elimina_mod:
                     spesa_rimossa = st.session_state["spese"].pop(idx_mod)
-                    st.success(f"Spesa '{spesa_rimossa['Descrizione']}' eliminata!")
+                    st.success(f"Spesa '{spesa_rimossa.get('Descrizione', '')}' eliminata!")
                     st.rerun()
 
 # Calcolo dei saldi
 for spesa in st.session_state["spese"]:
     totale = float(spesa.get("Importo", 0.0))
     pagatore = spesa.get("Pagato da", "Cassa Comune")
-    n_coinvolti = int(spesa.get("Nr Coppie", spesa.get("Num_Coinvolti", 1)))
+    
+    # Calcolo sicuro dei coinvolti
+    c_str = spesa.get("Coppie Coinvolte", spesa.get("Coinvolti", ""))
+    lista_coinvolti = [p.strip() for p in str(c_str).split(",") if p.strip()]
+    n_coinvolti = int(spesa.get("Nr Coppie", spesa.get("Num_Coinvolti", len(lista_coinvolti))))
+    if n_coinvolti == 0:
+        n_coinvolti = max(len(lista_coinvolti), 1)
     
     if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
         crediti_anticipi[pagatore] += totale
-        
-    coinvolti_str = str(spesa.get("Coppie Coinvolte", spesa.get("Coinvolti", "")))
-    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()]
-    
-    if n_coinvolti == 0:
-        n_coinvolti = max(len(lista_coinvolti), 1)
         
     quota_capite = totale / n_coinvolti
     for p in lista_coinvolti:
