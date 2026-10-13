@@ -185,4 +185,141 @@ with st.form("form_spesa", clear_on_submit=True):
     
     st.write("Seleziona quali coppie partecipano a questa spesa:")
     coppie_coinvolte = {}
-    cols = st.
+    cols = st.columns(min(len(st.session_state["partecipanti"]), 2))
+    for i, p in enumerate(st.session_state["partecipanti"]):
+        with cols[i % len(cols)]:
+            coppie_coinvolte[p] = st.checkbox(p, value=True, key=f"cb_{p}")
+            
+    submitted = st.form_submit_button("Registra Spesa")
+    
+    if submitted:
+        try:
+            importo_spesa = round(float(importo_spesa_str.replace(',', '.')), 2)
+        except ValueError:
+            importo_spesa = 0.0
+
+        coinvolti_list = [p for p, attivo in coppie_coinvolte.items() if attivo]
+        if not descrizione:
+            st.warning("Inserisci una descrizione per la spesa.")
+        elif importo_spesa <= 0:
+            st.warning("L'importo deve essere maggiore di zero.")
+        elif not coinvolti_list:
+            st.warning("Seleziona almeno una coppia per questa spesa.")
+        else:
+            st.session_state["spese"].append({
+                "Descrizione": descrizione,
+                "Importo": importo_spesa,
+                "Pagato da": pagato_da,
+                "Coppie Coinvolte": ", ".join(coinvolti_list),
+                "Nr Coppie": len(coinvolti_list)
+            })
+            st.success(f"Spesa '{descrizione}' registrata con successo!")
+            st.rerun()
+
+# --- SEZIONE: STORICO SPESE E BILANCI ---
+st.divider()
+st.subheader("📊 Riepilogo Movimenti e Saldi per Coppia")
+
+quote_spese = {p: 0.0 for p in st.session_state["partecipanti"]}
+crediti_anticipi = {p: 0.0 for p in st.session_state["partecipanti"]}
+
+if len(st.session_state["spese"]) > 0:
+    st.write("### Cronologia Spese")
+    
+    spese_formattate = []
+    for s in st.session_state["spese"]:
+        imp = float(s.get("Importo", 0.0))
+        spese_formattate.append({
+            "Descrizione": s.get("Descrizione", ""),
+            "Importo (€)": f"{imp:.2f} €",
+            "Pagato da": s.get("Pagato da", "Cassa Comune"),
+            "Coppie Coinvolte": s.get("Coppie Coinvolte", s.get("Coinvolti", "")),
+            "Nr Coppie": s.get("Nr Coppie", s.get("Num_Coinvolti", 1))
+        })
+    
+    df_spese = pd.DataFrame(spese_formattate)
+    st.dataframe(df_spese, use_container_width=True, hide_index=True)
+
+# Calcolo dei saldi
+for spesa in st.session_state["spese"]:
+    totale = float(spesa.get("Importo", 0.0))
+    pagatore = spesa.get("Pagato da", "Cassa Comune")
+    n_coinvolti = int(spesa.get("Nr Coppie", spesa.get("Num_Coinvolti", 1)))
+    
+    if pagatore != "Cassa Comune" and pagatore in crediti_anticipi:
+        crediti_anticipi[pagatore] += totale
+        
+    coinvolti_str = str(spesa.get("Coppie Coinvolte", spesa.get("Coinvolti", "")))
+    lista_coinvolti = [p.strip() for p in coinvolti_str.split(",") if p.strip()]
+    
+    if n_coinvolti == 0:
+        n_coinvolti = max(len(lista_coinvolti), 1)
+        
+    quota_capite = totale / n_coinvolti
+    for p in lista_coinvolti:
+        if p in quote_spese:
+            quote_spese[p] += quota_capite
+
+st.write("### 💶 Situazione Contabile per Coppia:")
+col_res1, col_res2 = st.columns(2)
+
+# --- COSTRUZIONE MESSAGGIO COMPLETO PER WHATSAPP ---
+testo_whatsapp = "✈️ *RIEPILOGO CASSA VIAGGIO*\n\n"
+testo_whatsapp += f"💰 *Cassa Totale Versata:* {totale_versato:.2f} €\n"
+testo_whatsapp += f"💸 *Spese Totali:* {totale_speso:.2f} €\n"
+testo_whatsapp += f"🏦 *Disponibilità Residua:* {cassa_rimanente:.2f} €\n\n"
+
+# 1. Dettaglio Voci di Spesa
+if len(st.session_state["spese"]) > 0:
+    testo_whatsapp += "📝 *ELENCO SPESE REGISTRATE:*\n"
+    for idx, s in enumerate(st.session_state["spese"], 1):
+        imp = float(s.get("Importo", 0.0))
+        desc = s.get("Descrizione", "")
+        pagatore = s.get("Pagato da", "Cassa Comune")
+        coinvolti = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
+        testo_whatsapp += f"{idx}. *{desc}* - {imp:.2f} €\n"
+        testo_whatsapp += f"   • Pagato da: {pagatore}\n"
+        testo_whatsapp += f"   • Per: {coinvolti}\n"
+    testo_whatsapp += "\n"
+
+# 2. Saldi Generali per Coppia
+testo_whatsapp += "📊 *SALDI FINALI PER COPPIA:*\n"
+for i, p in enumerate(st.session_state["partecipanti"]):
+    versato_p = round(st.session_state["versamenti"].get(p, 0.0), 2)
+    speso_p = round(quote_spese.get(p, 0.0), 2)
+    anticipato_p = round(crediti_anticipi.get(p, 0.0), 2)
+    saldo_p = round((versato_p + anticipato_p) - speso_p, 2)
+    
+    testo_whatsapp += f"\n👫 *{p}*\n"
+    testo_whatsapp += f"• Versato: {versato_p:.2f} €\n"
+    testo_whatsapp += f"• Speso: {speso_p:.2f} €\n"
+    if anticipato_p > 0:
+        testo_whatsapp += f"• Anticipato di tasca: {anticipato_p:.2f} €\n"
+    testo_whatsapp += f"• Saldo attuale: {saldo_p:.2f} €\n"
+    
+    col = col_res1 if i % 2 == 0 else col_res2
+    with col:
+        st.markdown(f"**Coppia 👫 {p}**")
+        st.text(f"Versato in cassa: {versato_p:.2f} €\nSpesa a carico:  {speso_p:.2f} €\nAnticipi tasca:  {anticipato_p:.2f} €")
+        st.metric(label=f"Saldo di {p}", value=f"{saldo_p:.2f} €")
+        st.markdown("---")
+
+# --- SEZIONE INVIO WHATSAPP ---
+st.subheader("📲 Condividi su WhatsApp")
+url_wa = "https://wa.me/?text=" + urllib.parse.quote(testo_whatsapp)
+st.markdown(f'[![Invia su WhatsApp](https://img.shields.io/badge/Invia_Riepilogo_su-WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)]({url_wa})')
+
+st.divider()
+col_r1, col_r2 = st.columns(2)
+with col_r1:
+    if st.button("🔄 Pulisci memoria spese"):
+        st.session_state["spese"] = []
+        st.rerun()
+with col_r2:
+    if st.button("🗑️ Reset totale dati (Annulla tutto)"):
+        st.session_state["partecipanti"] = list(COPPIE_FISSE)
+        st.session_state["versamenti"] = {p: 400.0 for p in COPPIE_FISSE}
+        st.session_state["spese"] = []
+        st.session_state["extra_versamenti"] = []
+        st.session_state["reset_vers_counter"] += 1
+        st.rerun()
