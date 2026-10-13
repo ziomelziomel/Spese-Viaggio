@@ -125,7 +125,7 @@ if st.sidebar.button("Registra Versamento"):
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale Semplice
+# 3. Backup & Ripristino Testuale Semplice con Pulsante Copia Nativo
 st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
@@ -133,7 +133,9 @@ dati_correnti = {
     "spese": st.session_state["spese"]
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
-st.sidebar.text_area("Copia questo codice per salvarlo:", value=codice_backup, height=80)
+
+st.sidebar.write("Tocca l'icona in alto a destra del blocco qui sotto per copiare il codice:")
+st.sidebar.code(codice_backup, language="json")
 
 codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
 if st.sidebar.button("🔄 Ripristina"):
@@ -229,7 +231,6 @@ if len(st.session_state["spese"]) > 0:
     spese_formattate = []
     for s in st.session_state["spese"]:
         imp = float(s.get("Importo", 0.0))
-        # Gestione sicura dei campi per evitare qualsiasi KeyError con vecchi dati
         c_coinvolte = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
         nr_c = s.get("Nr Coppie", s.get("Num_Coinvolti", len(str(c_coinvolte).split(",")) if c_coinvolte else 1))
         
@@ -318,7 +319,6 @@ for spesa in st.session_state["spese"]:
     totale = float(spesa.get("Importo", 0.0))
     pagatore = spesa.get("Pagato da", "Cassa Comune")
     
-    # Calcolo sicuro dei coinvolti
     c_str = spesa.get("Coppie Coinvolte", spesa.get("Coinvolti", ""))
     lista_coinvolti = [p.strip() for p in str(c_str).split(",") if p.strip()]
     n_coinvolti = int(spesa.get("Nr Coppie", spesa.get("Num_Coinvolti", len(lista_coinvolti))))
