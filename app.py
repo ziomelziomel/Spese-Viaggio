@@ -165,7 +165,7 @@ if len(st.session_state["extra_versamenti"]) > 0:
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale Semplice (Aggiornato per iPhone)
+# 3. Backup & Ripristino Testuale (Con aggiornamento dinamico forzato)
 st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
@@ -174,8 +174,11 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
+# Chiave dinamica basata sul numero di elementi, così si aggiorna sempre al volo
+chiave_dinamica_backup = f"txt_backup_display_{len(st.session_state['spese'])}_{len(st.session_state['extra_versamenti'])}_{len(st.session_state['partecipanti'])}"
+
 st.sidebar.write("Seleziona e copia il testo qui sotto per fare il backup:")
-st.sidebar.text_area("Codice di Backup (Copia tutto):", value=codice_backup, height=100, key="txt_backup_display")
+st.sidebar.text_area("Codice di Backup (Copia tutto):", value=codice_backup, height=100, key=chiave_dinamica_backup)
 
 codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
 if st.sidebar.button("🔄 Ripristina"):
