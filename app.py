@@ -123,6 +123,50 @@ if st.sidebar.button("Registra Versamento"):
     else:
         st.sidebar.warning("Seleziona una coppia valida e inserisci un importo maggiore di zero.")
 
+# --- NUOVA SEZIONE: MODIFICA / ELIMINA VERSAMENTI EXTRA ---
+if len(st.session_state["extra_versamenti"]) > 0:
+    with st.sidebar.expander("✏️ Modifica o Elimina Versamento"):
+        opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']:.2f} € ({v['Tipo']})" 
+                        for i, v in enumerate(st.session_state["extra_versamenti"])]
+        
+        vers_scelto = st.selectbox("Seleziona versamento:", [""] + opzioni_vers, key="sel_mod_vers")
+        
+        if vers_scelto:
+            idx_v = int(vers_scelto.split(".")[0])
+            v_corr = st.session_state["extra_versamenti"][idx_v]
+            
+            nuovo_imp_v_str = st.text_input("Nuovo importo (€)", value=str(v_corr["Importo"]), key=f"mod_v_imp_{idx_v}")
+            
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                if st.button("💾 Aggiorna", key=f"btn_upd_v_{idx_v}"):
+                    try:
+                        nuovo_imp_v = round(float(nuovo_imp_v_str.replace(',', '.')), 2)
+                    except ValueError:
+                        nuovo_imp_v = 0.0
+                    
+                    if nuovo_imp_v > 0:
+                        # Ricalcola il saldo sottraendo il vecchio e aggiungendo il nuovo
+                        vecchio_imp = v_corr["Importo"]
+                        partecipante = v_corr["Partecipante"]
+                        
+                        st.session_state["versamenti"][partecipante] = st.session_state["versamenti"].get(partecipante, 0.0) - vecchio_imp + nuovo_imp
+                        st.session_state["extra_versamenti"][idx_v]["Importo"] = nuovo_imp
+                        st.sidebar.success("Versamento aggiornato!")
+                        st.rerun()
+                    else:
+                        st.sidebar.warning("Inserisci un importo valido.")
+            with col_v2:
+                if st.button("🗑️ Elimina", key=f"btn_del_v_{idx_v}"):
+                    v_rimosso = st.session_state["extra_versamenti"].pop(idx_v)
+                    partecipante = v_rimosso["Partecipante"]
+                    vecchio_imp = v_rimosso["Importo"]
+                    
+                    # Storna il versamento dal totale della coppia
+                    st.session_state["versamenti"][partecipante] = max(0.0, st.session_state["versamenti"].get(partecipante, 0.0) - vecchio_imp)
+                    st.sidebar.success("Versamento eliminato!")
+                    st.rerun()
+
 st.sidebar.divider()
 
 # 3. Backup & Ripristino Testuale Semplice con Pulsante Copia Nativo
@@ -130,7 +174,8 @@ st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
     "versamenti": st.session_state["versamenti"],
-    "spese": st.session_state["spese"]
+    "spese": st.session_state["spese"],
+    "extra_versamenti": st.session_state["extra_versamenti"]
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
@@ -145,6 +190,7 @@ if st.sidebar.button("🔄 Ripristina"):
             st.session_state["partecipanti"] = dati_caricati.get("partecipanti", list(COPPIE_FISSE))
             st.session_state["versamenti"] = dati_caricati.get("versamenti", {})
             st.session_state["spese"] = dati_caricati.get("spese", [])
+            st.session_state["extra_versamenti"] = dati_caricati.get("extra_versamenti", [])
             st.sidebar.success("Ripristinato con successo!")
             st.rerun()
         except Exception:
