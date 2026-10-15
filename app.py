@@ -35,7 +35,6 @@ if "spese" not in st.session_state:
     st.session_state["spese"] = []
 
 if "extra_versamenti" not in st.session_state:
-    # Inizializziamo i 400€ iniziali come versamenti reali modificabili/eliminabili
     st.session_state["extra_versamenti"] = [
         {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
     ]
@@ -133,7 +132,7 @@ if st.sidebar.button("Registra Versamento"):
     else:
         st.sidebar.warning("Seleziona una coppia valida e inserisci un importo diverso da zero.")
 
-# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO (INCLUSI I 400€) ---
+# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO ---
 if len(st.session_state["extra_versamenti"]) > 0:
     with st.sidebar.expander("✏️ Modifica o Elimina Versamento"):
         opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']} € ({v['Tipo']})" 
@@ -166,7 +165,7 @@ if len(st.session_state["extra_versamenti"]) > 0:
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale Semplice con Pulsante Copia Nativo
+# 3. Backup & Ripristino Testuale Semplice (Aggiornato per iPhone)
 st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
@@ -175,8 +174,8 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
-st.sidebar.write("Tocca l'icona in alto a destra del blocco qui sotto per copiare il codice:")
-st.sidebar.code(codice_backup, language="json")
+st.sidebar.write("Seleziona e copia il testo qui sotto per fare il backup:")
+st.sidebar.text_area("Codice di Backup (Copia tutto):", value=codice_backup, height=100, key="txt_backup_display")
 
 codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
 if st.sidebar.button("🔄 Ripristina"):
