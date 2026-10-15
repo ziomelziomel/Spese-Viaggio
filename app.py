@@ -25,23 +25,34 @@ if not st.session_state["authenticated"]:
 # --- APPLICAZIONE PRINCIPALE ---
 st.title("✈️ Gestione Cassa e Spese di Viaggio (per Coppie)")
 
-# Inizializzazione con le 4 coppie fisse e 400€ a coppia
+# Inizializzazione con le 4 coppie fisse
 COPPIE_FISSE = ["Andrea e Cinzia", "Melo e Laura", "Sandro e Fulvia", "Macio e Simona"]
 
 if "partecipanti" not in st.session_state or not st.session_state["partecipanti"]:
     st.session_state["partecipanti"] = list(COPPIE_FISSE)
 
-if "versamenti" not in st.session_state or not st.session_state["versamenti"]:
-    st.session_state["versamenti"] = {p: 400.0 for p in COPPIE_FISSE}
-
 if "spese" not in st.session_state:
     st.session_state["spese"] = []
 
 if "extra_versamenti" not in st.session_state:
-    st.session_state["extra_versamenti"] = []
+    # Inizializziamo inserendo i 400€ iniziali come versamenti modificabili ed eliminabili
+    st.session_state["extra_versamenti"] = [
+        {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
+    ]
 
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
+
+# --- FUNZIONE PER CALCOLARE I VERSAMENTI TOTALI PER COPPIA ---
+def calcola_versamenti():
+    versamenti = {p: 0.0 for p in st.session_state["partecipanti"]}
+    for v in st.session_state["extra_versamenti"]:
+        p = v["Partecipante"]
+        if p in versamenti:
+            versamenti[p] += float(v["Importo"])
+    return versamenti
+
+st_versamenti = calcola_versamenti()
 
 # --- MENU LATERALE (BARRA SINISTRA) ---
 st.sidebar.header("⚙️ Configurazione & Cassa")
@@ -58,8 +69,12 @@ with st.sidebar.form("form_aggiungi_coppia", clear_on_submit=True):
         if valore:
             if valore not in st.session_state["partecipanti"]:
                 st.session_state["partecipanti"].append(valore)
-                if valore not in st.session_state["versamenti"]:
-                    st.session_state["versamenti"][valore] = 0.0
+                # Aggiunge di default 400€ anche alla nuova coppia (modificabili)
+                st.session_state["extra_versamenti"].append({
+                    "Partecipante": valore,
+                    "Importo": 400.0,
+                    "Tipo": "Iniziale (Default)"
+                })
                 st.success(f"Aggiunta coppia {valore}!")
                 st.rerun()
             else:
@@ -73,8 +88,8 @@ coppia_da_rimuovere = st.sidebar.selectbox("Rimuovi coppia", lista_rimozione)
 if st.sidebar.button("Rimuovi Coppia"):
     if coppia_da_rimuovere and coppia_da_rimuovere in st.session_state["partecipanti"]:
         st.session_state["partecipanti"].remove(coppia_da_rimuovere)
-        if coppia_da_rimuovere in st.session_state["versamenti"]:
-            del st.session_state["versamenti"][coppia_da_rimuovere]
+        # Rimuove anche i versamenti associati a questa coppia
+        st.session_state["extra_versamenti"] = [v for v in st.session_state["extra_versamenti"] if v["Partecipante"] != coppia_da_rimuovere]
         st.sidebar.success(f"Rimossa coppia {coppia_da_rimuovere}!")
         st.rerun()
 
@@ -108,10 +123,7 @@ if st.sidebar.button("Registra Versamento"):
     except ValueError:
         importo_versamento = 0.0
 
-    if persona_versamento and persona_versamento != "" and importo_versamento > 0:
-        if persona_versamento not in st.session_state["versamenti"]:
-            st.session_state["versamenti"][persona_versamento] = 0.0
-        st.session_state["versamenti"][persona_versamento] += importo_versamento
+    if persona_versamento and persona_versamento != "" and importo_versamento != 0:
         st.session_state["extra_versamenti"].append({
             "Partecipante": persona_versamento,
             "Importo": round(importo_versamento, 2),
@@ -121,21 +133,21 @@ if st.sidebar.button("Registra Versamento"):
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
     else:
-        st.sidebar.warning("Seleziona una coppia valida e inserisci un importo maggiore di zero.")
+        st.sidebar.warning("Seleziona una coppia valida e inserisci un importo diverso da zero.")
 
-# --- NUOVA SEZIONE: MODIFICA / ELIMINA VERSAMENTI EXTRA ---
+# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO (INCLUSI I 400€ INIZIALI) ---
 if len(st.session_state["extra_versamenti"]) > 0:
     with st.sidebar.expander("✏️ Modifica o Elimina Versamento"):
-        opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']:.2f} € ({v['Tipo']})" 
+        opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']} € ({v['Tipo']})" 
                         for i, v in enumerate(st.session_state["extra_versamenti"])]
         
-        vers_scelto = st.selectbox("Seleziona versamento:", [""] + opzioni_vers, key="sel_mod_vers")
+        vers_scelto = st.selectbox("Seleziona quota/versamento:", [""] + opzioni_vers, key="sel_mod_vers")
         
         if vers_scelto:
             idx_v = int(vers_scelto.split(".")[0])
             v_corr = st.session_state["extra_versamenti"][idx_v]
             
-            nuovo_imp_v_str = st.text_input("Nuovo importo (€)", value=str(v_corr["Importo"]), key=f"mod_v_imp_{idx_v}")
+            nuovo_imp_v_str = st.text_input("Importo (€) (Metti 0 se non partecipa)", value=str(v_corr["Importo"]), key=f"mod_v_imp_{idx_v}")
             
             col_v1, col_v2 = st.columns(2)
             with col_v1:
@@ -145,26 +157,13 @@ if len(st.session_state["extra_versamenti"]) > 0:
                     except ValueError:
                         nuovo_imp_v = 0.0
                     
-                    if nuovo_imp_v > 0:
-                        # Ricalcola il saldo sottraendo il vecchio e aggiungendo il nuovo
-                        vecchio_imp = v_corr["Importo"]
-                        partecipante = v_corr["Partecipante"]
-                        
-                        st.session_state["versamenti"][partecipante] = st.session_state["versamenti"].get(partecipante, 0.0) - vecchio_imp + nuovo_imp
-                        st.session_state["extra_versamenti"][idx_v]["Importo"] = nuovo_imp
-                        st.sidebar.success("Versamento aggiornato!")
-                        st.rerun()
-                    else:
-                        st.sidebar.warning("Inserisci un importo valido.")
+                    st.session_state["extra_versamenti"][idx_v]["Importo"] = nuovo_imp_v
+                    st.sidebar.success("Quota aggiornata!")
+                    st.rerun()
             with col_v2:
                 if st.button("🗑️ Elimina", key=f"btn_del_v_{idx_v}"):
-                    v_rimosso = st.session_state["extra_versamenti"].pop(idx_v)
-                    partecipante = v_rimosso["Partecipante"]
-                    vecchio_imp = v_rimosso["Importo"]
-                    
-                    # Storna il versamento dal totale della coppia
-                    st.session_state["versamenti"][partecipante] = max(0.0, st.session_state["versamenti"].get(partecipante, 0.0) - vecchio_imp)
-                    st.sidebar.success("Versamento eliminato!")
+                    st.session_state["extra_versamenti"].pop(idx_v)
+                    st.sidebar.success("Voce eliminata!")
                     st.rerun()
 
 st.sidebar.divider()
@@ -173,7 +172,6 @@ st.sidebar.divider()
 st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
-    "versamenti": st.session_state["versamenti"],
     "spese": st.session_state["spese"],
     "extra_versamenti": st.session_state["extra_versamenti"]
 }
@@ -188,7 +186,6 @@ if st.sidebar.button("🔄 Ripristina"):
         try:
             dati_caricati = json.loads(codice_da_ripristinare.strip())
             st.session_state["partecipanti"] = dati_caricati.get("partecipanti", list(COPPIE_FISSE))
-            st.session_state["versamenti"] = dati_caricati.get("versamenti", {})
             st.session_state["spese"] = dati_caricati.get("spese", [])
             st.session_state["extra_versamenti"] = dati_caricati.get("extra_versamenti", [])
             st.sidebar.success("Ripristinato con successo!")
@@ -203,8 +200,11 @@ if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
 
+# Ricalcoliamo i versamenti aggiornati dopo eventuali modifiche
+st_versamenti = calcola_versamenti()
+
 # --- CALCOLI FINANZIARI GENERALI ---
-totale_versato = sum(st.session_state["versamenti"].values())
+totale_versato = sum(st_versamenti.values())
 totale_speso = sum(float(s.get("Importo", 0.0)) for s in st.session_state["spese"])
 cassa_rimanente = totale_versato - totale_speso
 
@@ -404,7 +404,7 @@ if len(st.session_state["spese"]) > 0:
 # 2. Saldi Generali per Coppia
 testo_whatsapp += "📊 *SALDI FINALI PER COPPIA:*\n"
 for i, p in enumerate(st.session_state["partecipanti"]):
-    versato_p = round(st.session_state["versamenti"].get(p, 0.0), 2)
+    versato_p = round(st_versamenti.get(p, 0.0), 2)
     speso_p = round(quote_spese.get(p, 0.0), 2)
     anticipato_p = round(crediti_anticipi.get(p, 0.0), 2)
     saldo_p = round((versato_p + anticipato_p) - speso_p, 2)
@@ -437,8 +437,9 @@ with col_r1:
 with col_r2:
     if st.button("🗑️ Reset totale dati (Annulla tutto)"):
         st.session_state["partecipanti"] = list(COPPIE_FISSE)
-        st.session_state["versamenti"] = {p: 400.0 for p in COPPIE_FISSE}
+        st.session_state["extra_versamenti"] = [
+            {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
+        ]
         st.session_state["spese"] = []
-        st.session_state["extra_versamenti"] = []
         st.session_state["reset_vers_counter"] += 1
         st.rerun()
