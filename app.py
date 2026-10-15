@@ -35,7 +35,6 @@ if "spese" not in st.session_state:
     st.session_state["spese"] = []
 
 if "extra_versamenti" not in st.session_state:
-    # Inizializziamo inserendo i 400€ iniziali come versamenti modificabili ed eliminabili
     st.session_state["extra_versamenti"] = [
         {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
     ]
@@ -69,7 +68,6 @@ with st.sidebar.form("form_aggiungi_coppia", clear_on_submit=True):
         if valore:
             if valore not in st.session_state["partecipanti"]:
                 st.session_state["partecipanti"].append(valore)
-                # Aggiunge di default 400€ anche alla nuova coppia (modificabili)
                 st.session_state["extra_versamenti"].append({
                     "Partecipante": valore,
                     "Importo": 400.0,
@@ -88,7 +86,6 @@ coppia_da_rimuovere = st.sidebar.selectbox("Rimuovi coppia", lista_rimozione)
 if st.sidebar.button("Rimuovi Coppia"):
     if coppia_da_rimuovere and coppia_da_rimuovere in st.session_state["partecipanti"]:
         st.session_state["partecipanti"].remove(coppia_da_rimuovere)
-        # Rimuove anche i versamenti associati a questa coppia
         st.session_state["extra_versamenti"] = [v for v in st.session_state["extra_versamenti"] if v["Partecipante"] != coppia_da_rimuovere]
         st.sidebar.success(f"Rimossa coppia {coppia_da_rimuovere}!")
         st.rerun()
@@ -135,7 +132,7 @@ if st.sidebar.button("Registra Versamento"):
     else:
         st.sidebar.warning("Seleziona una coppia valida e inserisci un importo diverso da zero.")
 
-# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO (INCLUSI I 400€ INIZIALI) ---
+# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO ---
 if len(st.session_state["extra_versamenti"]) > 0:
     with st.sidebar.expander("✏️ Modifica o Elimina Versamento"):
         opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']} € ({v['Tipo']})" 
@@ -200,7 +197,6 @@ if st.sidebar.button("🚪 Esci (Logout)"):
     st.session_state["authenticated"] = False
     st.rerun()
 
-# Ricalcoliamo i versamenti aggiornati dopo eventuali modifiche
 st_versamenti = calcola_versamenti()
 
 # --- CALCOLI FINANZIARI GENERALI ---
@@ -280,12 +276,14 @@ if len(st.session_state["spese"]) > 0:
         c_coinvolte = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
         nr_c = s.get("Nr Coppie", s.get("Num_Coinvolti", len(str(c_coinvolte).split(",")) if c_coinvolte else 1))
         
+        # Formattazione con Numero Partecipanti prima dei nomi
+        stringa_coinvolti_formattata = f"[{nr_c}] {c_coinvolte}"
+        
         spese_formattate.append({
             "Descrizione": s.get("Descrizione", ""),
             "Importo (€)": f"{imp:.2f} €",
             "Pagato da": s.get("Pagato da", "Cassa Comune"),
-            "Coppie Coinvolte": c_coinvolte,
-            "Nr Coppie": nr_c
+            "N. Coppie / Coinvolti": stringa_coinvolti_formattata
         })
     
     df_spese = pd.DataFrame(spese_formattate)
@@ -396,9 +394,11 @@ if len(st.session_state["spese"]) > 0:
         desc = s.get("Descrizione", "")
         pagatore = s.get("Pagato da", "Cassa Comune")
         coinvolti = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
+        nr_c = s.get("Nr Coppie", len(str(coinvolti).split(",")) if coinvolti else 1)
+        
         testo_whatsapp += f"{idx}. *{desc}* - {imp:.2f} €\n"
         testo_whatsapp += f"   • Pagato da: {pagatore}\n"
-        testo_whatsapp += f"   • Per: {coinvolti}\n"
+        testo_whatsapp += f"   • Per: [{nr_c} coppie] {coinvolti}\n"
     testo_whatsapp += "\n"
 
 # 2. Saldi Generali per Coppia
