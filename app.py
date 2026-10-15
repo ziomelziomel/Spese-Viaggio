@@ -26,7 +26,7 @@ if not st.session_state["authenticated"]:
 st.title("✈️ Gestione Cassa e Spese di Viaggio (per Coppie)")
 
 # Inizializzazione con le 4 coppie fisse
-COPPIE_FISSE = ["Andrea e Cinzia", "Melo e Laura", "Sandro e Fulvia", "Macio e Simona"]
+COPPIE_FISSE = ["ANDREA e CINZIA", "MELO e LAURA", "SANDRO e FULVIA", "MACIO e SIMONA"]
 
 if "partecipanti" not in st.session_state or not st.session_state["partecipanti"]:
     st.session_state["partecipanti"] = list(COPPIE_FISSE)
@@ -36,7 +36,7 @@ if "spese" not in st.session_state:
 
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = [
-        {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
+        {"Partecipante": p, "Importo": 200.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
     ]
 
 if "reset_vers_counter" not in st.session_state:
