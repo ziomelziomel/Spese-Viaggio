@@ -35,6 +35,7 @@ if "spese" not in st.session_state:
     st.session_state["spese"] = []
 
 if "extra_versamenti" not in st.session_state:
+    # Inizializziamo i 400€ iniziali come versamenti reali modificabili/eliminabili
     st.session_state["extra_versamenti"] = [
         {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
     ]
@@ -132,7 +133,7 @@ if st.sidebar.button("Registra Versamento"):
     else:
         st.sidebar.warning("Seleziona una coppia valida e inserisci un importo diverso da zero.")
 
-# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO ---
+# --- SEZIONE: MODIFICA O ELIMINA QUALSIASI VERSAMENTO (INCLUSI I 400€) ---
 if len(st.session_state["extra_versamenti"]) > 0:
     with st.sidebar.expander("✏️ Modifica o Elimina Versamento"):
         opzioni_vers = [f"{i}. {v['Partecipante']} - {v['Importo']} € ({v['Tipo']})" 
@@ -276,7 +277,6 @@ if len(st.session_state["spese"]) > 0:
         c_coinvolte = s.get("Coppie Coinvolte", s.get("Coinvolti", ""))
         nr_c = s.get("Nr Coppie", s.get("Num_Coinvolti", len(str(c_coinvolte).split(",")) if c_coinvolte else 1))
         
-        # Formattazione con Numero Partecipanti prima dei nomi
         stringa_coinvolti_formattata = f"[{nr_c}] {c_coinvolte}"
         
         spese_formattate.append({
