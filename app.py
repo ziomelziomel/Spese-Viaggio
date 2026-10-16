@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import urllib.parse
 import hashlib
+from datetime import datetime
 
 # Configurazione della pagina
 st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
@@ -80,7 +81,7 @@ with st.sidebar.form("form_aggiungi_coppia", clear_on_submit=True):
                 st.success(f"Aggiunta coppia {valore}!")
                 st.rerun()
             else:
-                st.warning("Questa coppia esiste già.")
+                st.warning("Questa coppia existe già.")
         else:
             st.warning("Inserisci un nome valido.")
 
@@ -183,8 +184,12 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
-# Link WhatsApp dedicato
-url_wa_backup = "https://wa.me/?text=" + urllib.parse.quote("BACKUP_CASSA_VIAGGIO:\n" + codice_backup)
+# Intestazione con Data e Ora correnti
+ora_attuale = datetime.now().strftime("%d/%m/%Y %H:%M")
+intestazione_wa = f"BACKUP_CASSA_VIAGGIO ({ora_attuale}):\n"
+
+# Link WhatsApp dedicato con data e ora
+url_wa_backup = "https://wa.me/?text=" + urllib.parse.quote(intestazione_wa + codice_backup)
 st.sidebar.markdown(f'[![Invia Backup su WhatsApp](https://img.shields.io/badge/Invia_Backup_su-WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)]({url_wa_backup})')
 
 st.sidebar.write("Oppure incolla qui sotto il codice salvato per ripristinare:")
@@ -193,9 +198,10 @@ codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", v
 if st.sidebar.button("🔄 Ripristina"):
     testo_grezzo = codice_da_ripristinare.strip()
     
-    # Rimuove l'intestazione "BACKUP_CASSA_VIAGGIO:" se presente nel testo incollato
-    if "BACKUP_CASSA_VIAGGIO:" in testo_grezzo:
-        testo_grezzo = testo_grezzo.split("BACKUP_CASSA_VIAGGIO:")[-1].strip()
+    # Rimuove qualsiasi intestazione che inizia con BACKUP_CASSA_VIAGGIO
+    if "BACKUP_CASSA_VIAGGIO" in testo_grezzo and "{" in testo_grezzo:
+        pos_json = testo_grezzo.find("{")
+        testo_grezzo = testo_grezzo[pos_json:].strip()
         
     if testo_grezzo:
         try:
