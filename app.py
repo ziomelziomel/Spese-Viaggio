@@ -43,6 +43,10 @@ if "extra_versamenti" not in st.session_state:
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
 
+# Stato per forzare il refresh del testo di backup
+if "backup_refresh_id" not in st.session_state:
+    st.session_state["backup_refresh_id"] = 0
+
 # --- FUNZIONE PER CALCOLARE I VERSAMENTI TOTALI PER COPPIA ---
 def calcola_versamenti():
     versamenti = {p: 0.0 for p in st.session_state["partecipanti"]}
@@ -166,8 +170,13 @@ if len(st.session_state["extra_versamenti"]) > 0:
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale (Con hash MD5 per recepire ogni singola modifica)
+# 3. Backup & Ripristino Testuale con Pulsante di Sincronizzazione Forzata
 st.sidebar.subheader("📋 Backup Testuale")
+
+if st.sidebar.button("🔄 Rigenera Codice di Backup"):
+    st.session_state["backup_refresh_id"] += 1
+    st.rerun()
+
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
     "spese": st.session_state["spese"],
@@ -175,12 +184,12 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
-# Chiave basata sull'impronta esatta (hash) del contenuto: cambia se aggiungi, rimuovi o MODIFICHI
+# Chiave completamente dinamica che cambia a ogni pressione del pulsante o modifica
 hash_backup = hashlib.md5(codice_backup.encode('utf-8')).hexdigest()
-chiave_dinamica_backup = f"txt_backup_display_{hash_backup}"
+chiave_dinamica_backup = f"txt_backup_display_{hash_backup}_{st.session_state['backup_refresh_id']}"
 
-st.sidebar.write("Seleziona e copia il testo qui sotto per fare il backup:")
-st.sidebar.text_area("Codice di Backup (Copia tutto):", value=codice_backup, height=100, key=chiave_dinamica_backup)
+st.sidebar.write("Copia il codice aggiornato qui sotto:")
+st.sidebar.text_area("Codice di Backup:", value=codice_backup, height=100, key=chiave_dinamica_backup)
 
 codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
 if st.sidebar.button("🔄 Ripristina"):
