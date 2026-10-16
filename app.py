@@ -43,7 +43,6 @@ if "extra_versamenti" not in st.session_state:
 if "reset_vers_counter" not in st.session_state:
     st.session_state["reset_vers_counter"] = 0
 
-# Stato per forzare il refresh del testo di backup
 if "backup_refresh_id" not in st.session_state:
     st.session_state["backup_refresh_id"] = 0
 
@@ -170,10 +169,10 @@ if len(st.session_state["extra_versamenti"]) > 0:
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale con Pulsante di Sincronizzazione Forzata
-st.sidebar.subheader("📋 Backup Testuale")
+# 3. Backup & Ripristino Testuale con Invio Diretto su WhatsApp
+st.sidebar.subheader("📋 Backup via WhatsApp")
 
-if st.sidebar.button("🔄 Rigenera Codice di Backup"):
+if st.sidebar.button("🔄 Aggiorna Dati Backup"):
     st.session_state["backup_refresh_id"] += 1
     st.rerun()
 
@@ -184,13 +183,11 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
-# Chiave completamente dinamica che cambia a ogni pressione del pulsante o modifica
-hash_backup = hashlib.md5(codice_backup.encode('utf-8')).hexdigest()
-chiave_dinamica_backup = f"txt_backup_display_{hash_backup}_{st.session_state['backup_refresh_id']}"
+# Link WhatsApp dedicato per inviare il codice di backup come messaggio
+url_wa_backup = "https://wa.me/?text=" + urllib.parse.quote("BACKUP_CASSA_VIAGGIO:\n" + codice_backup)
+st.sidebar.markdown(f'[![Invia Backup su WhatsApp](https://img.shields.io/badge/Invia_Backup_su-WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)]({url_wa_backup})')
 
-st.sidebar.write("Copia il codice aggiornato qui sotto:")
-st.sidebar.text_area("Codice di Backup:", value=codice_backup, height=100, key=chiave_dinamica_backup)
-
+st.sidebar.write("Oppure incolla qui sotto il codice salvato per ripristinare:")
 codice_da_ripristinare = st.sidebar.text_area("Incolla qui per ripristinare:", value="", height=80, key="txt_ripristino")
 if st.sidebar.button("🔄 Ripristina"):
     if codice_da_ripristinare.strip():
