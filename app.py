@@ -1,4 +1,4 @@
-ùimport streamlit as st
+import streamlit as st
 import pandas as pd
 import json
 import urllib.parse
