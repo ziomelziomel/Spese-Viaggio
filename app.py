@@ -1,7 +1,8 @@
-import streamlit as st
+ùimport streamlit as st
 import pandas as pd
 import json
 import urllib.parse
+import hashlib
 
 # Configurazione della pagina
 st.set_page_config(page_title="Spese di Viaggio con Cassa Comune", page_icon="✈️", layout="centered")
@@ -26,7 +27,7 @@ if not st.session_state["authenticated"]:
 st.title("✈️ Gestione Cassa e Spese di Viaggio (per Coppie)")
 
 # Inizializzazione con le 4 coppie fisse
-COPPIE_FISSE = ["ANDREA e CINZIA", "MELO e LAURA", "SANDRO e FULVIA", "MACIO e SIMONA"]
+COPPIE_FISSE = ["Andrea e Cinzia", "Melo e Laura", "Sandro e Fulvia", "Macio e Simona"]
 
 if "partecipanti" not in st.session_state or not st.session_state["partecipanti"]:
     st.session_state["partecipanti"] = list(COPPIE_FISSE)
@@ -36,7 +37,7 @@ if "spese" not in st.session_state:
 
 if "extra_versamenti" not in st.session_state:
     st.session_state["extra_versamenti"] = [
-        {"Partecipante": p, "Importo": 200.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
+        {"Partecipante": p, "Importo": 400.0, "Tipo": "Iniziale (Default)"} for p in COPPIE_FISSE
     ]
 
 if "reset_vers_counter" not in st.session_state:
@@ -165,7 +166,7 @@ if len(st.session_state["extra_versamenti"]) > 0:
 
 st.sidebar.divider()
 
-# 3. Backup & Ripristino Testuale (Con aggiornamento dinamico forzato)
+# 3. Backup & Ripristino Testuale (Con hash MD5 per recepire ogni singola modifica)
 st.sidebar.subheader("📋 Backup Testuale")
 dati_correnti = {
     "partecipanti": st.session_state["partecipanti"],
@@ -174,8 +175,9 @@ dati_correnti = {
 }
 codice_backup = json.dumps(dati_correnti, ensure_ascii=False)
 
-# Chiave dinamica basata sul numero di elementi, così si aggiorna sempre al volo
-chiave_dinamica_backup = f"txt_backup_display_{len(st.session_state['spese'])}_{len(st.session_state['extra_versamenti'])}_{len(st.session_state['partecipanti'])}"
+# Chiave basata sull'impronta esatta (hash) del contenuto: cambia se aggiungi, rimuovi o MODIFICHI
+hash_backup = hashlib.md5(codice_backup.encode('utf-8')).hexdigest()
+chiave_dinamica_backup = f"txt_backup_display_{hash_backup}"
 
 st.sidebar.write("Seleziona e copia il testo qui sotto per fare il backup:")
 st.sidebar.text_area("Codice di Backup (Copia tutto):", value=codice_backup, height=100, key=chiave_dinamica_backup)
